@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 from reconciliation_engine import parse_tally, parse_gstr2b, reconcile
+from datetime import datetime
 
 st.set_page_config(page_title="GST Reconciliation", layout="wide")
 
@@ -96,30 +97,96 @@ if "results" in st.session_state:
         else:
             st.success("No tax mismatch.")
 
-    # ================= SIMPLIFIED EXCEL REPORT ================= #
+    # ================= ENHANCED EXCEL REPORT ================= #
 
     output = io.BytesIO()
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         workbook = writer.book
         
-        # Formats
-        header_format = workbook.add_format({
+        # === FONT CONFIGURATION ===
+        # Try to set Aptos Narrow, fallback to Calibri
+        try:
+            workbook.add_format({'font_name': 'Aptos Narrow'})
+            font_name = 'Aptos Narrow'
+        except:
+            font_name = 'Calibri'
+        
+        # === FORMATS ===
+        # Header format - ONLY for Summary sheet (with borders)
+        summary_header = workbook.add_format({
             "bold": True,
+            "font_name": font_name,
+            "font_size": 11,
             "bg_color": "#4472C4",
             "font_color": "white",
-            "border": 1
+            "border": 1,
+            "align": "center",
+            "valign": "vcenter"
         })
         
+        # Regular header format (no borders) for other sheets
+        regular_header = workbook.add_format({
+            "bold": True,
+            "font_name": font_name,
+            "font_size": 11,
+            "bg_color": "#D3D3D3",
+            "font_color": "black",
+            "border": 0,
+            "align": "center",
+            "valign": "vcenter"
+        })
+        
+        # Money format (no borders)
         money_format = workbook.add_format({
             "num_format": "₹#,##0.00",
-            "border": 1
+            "font_name": font_name,
+            "font_size": 11,
+            "border": 0
         })
         
-        def write_sheet(df, name, columns_to_show=None):
+        # Integer format (no borders)
+        integer_format = workbook.add_format({
+            "num_format": "#,##0",
+            "font_name": font_name,
+            "font_size": 11,
+            "border": 0
+        })
+        
+        # Date format - ONLY DATE, no time (no borders)
+        date_format = workbook.add_format({
+            "num_format": "dd-mm-yyyy",
+            "font_name": font_name,
+            "font_size": 11,
+            "border": 0,
+            "align": "left"
+        })
+        
+        # Text format (no borders)
+        text_format = workbook.add_format({
+            "font_name": font_name,
+            "font_size": 11,
+            "border": 0
+        })
+        
+        # Center alignment format (no borders)
+        center_format = workbook.add_format({
+            "font_name": font_name,
+            "font_size": 11,
+            "border": 0,
+            "align": "center"
+        })
+        
+        def write_sheet(df, name, columns_to_show=None, is_summary=False):
             """Write dataframe with clean column selection"""
             if df.empty:
-                pd.DataFrame({"Message": ["No records found"]}).to_excel(writer, sheet_name=name, index=False)
+                empty_df = pd.DataFrame({"Message": ["No records found"]})
+                empty_df.to_excel(writer, sheet_name=name[:31], index=False, startrow=1)
+                worksheet = writer.sheets[name[:31]]
+                
+                # Write header
+                worksheet.write(0, 0, "Message", summary_header if is_summary else regular_header)
+                worksheet.set_column(0, 0, 30, text_format)
                 return
                 
             # Select only relevant columns if specified
@@ -128,79 +195,139 @@ if "results" in st.session_state:
             else:
                 display_df = df.copy()
                 
-            display_df.to_excel(writer, sheet_name=name, index=False)
-            worksheet = writer.sheets[name]
+            # Convert date columns to proper datetime and then to date only
+            date_columns = [col for col in display_df.columns if 'Date' in col or 'date' in col]
+            for col in date_columns:
+                if col in display_df.columns:
+                    display_df[col] = pd.to_datetime(display_df[col], errors='coerce').dt.date
+                
+            display_df.to_excel(writer, sheet_name=name[:31], index=False, startrow=1)
+            worksheet = writer.sheets[name[:31]]
             
-            # Format headers
+            # Write headers manually with proper formatting
             for col_num, column in enumerate(display_df.columns):
-                worksheet.write(0, col_num, column, header_format)
+                worksheet.write(0, col_num, column, summary_header if is_summary else regular_header)
+            
+            # Apply formatting to data rows
+            for col_num, column in enumerate(display_df.columns):
+                # Calculate column width
+                if not display_df[column].isna().all():
+                    max_len = max(
+                        display_df[column].astype(str).map(len).max(),
+                        len(column)
+                    ) + 2
+                else:
+                    max_len = len(column) + 2
+                max_len = min(max_len, 50)
                 
-                # Auto-width
-                max_len = max(
-                    display_df[column].astype(str).map(len).max(),
-                    len(column)
-                ) + 2
-                worksheet.set_column(col_num, col_num, max_len)
-                
-                # Format money columns
-                if any(x in column.lower() for x in ['value', 'tax', 'itc', 'amount', 'diff']):
+                # Apply appropriate format based on column type
+                if 'Date' in column or 'date' in column:
+                    worksheet.set_column(col_num, col_num, max_len, date_format)
+                elif any(x in column.lower() for x in ['value', 'tax', 'itc', 'amount', 'diff', 'difference']):
                     worksheet.set_column(col_num, col_num, max_len, money_format)
+                elif any(x in column.lower() for x in ['count', 'invoices', 'matched']):
+                    worksheet.set_column(col_num, col_num, max_len, integer_format)
+                elif any(x in column.lower() for x in ['gstin', 'invoice', 'number']):
+                    worksheet.set_column(col_num, col_num, max_len, text_format)
+                else:
+                    worksheet.set_column(col_num, col_num, max_len, text_format)
         
-        # ===== SHEET 1: EXECUTIVE SUMMARY ===== #
+        # ===== SHEET 1: EXECUTIVE SUMMARY (WITH BORDERS) ===== #
         summary_data = {
             "Particulars": [
-                "Total Invoices in GSTR-2B",
-                "Total Invoices in Books",
-                "✅ Fully Matched Invoices",
-                "❌ Missing in Books",
-                "❌ Missing in GSTR-2B",
-                "⚠️ Value Mismatch",
-                "⚠️ Tax Mismatch",
+                "📊 RECONCILIATION SUMMARY",
+                "══════════════════════════",
                 "",
-                "ITC as per GSTR-2B",
-                "ITC as per Books",
-                "ITC Difference",
-                "Match Percentage"
+                "📋 INVOICE COUNT SUMMARY:",
+                "   Total Invoices in GSTR-2B",
+                "   Total Invoices in Books",
+                "   ✅ Fully Matched Invoices",
+                "   ❌ Missing in Books",
+                "   ❌ Missing in GSTR-2B",
+                "   ⚠️ Value Mismatch",
+                "   ⚠️ Tax Mismatch",
+                "",
+                "💰 ITC AMOUNT SUMMARY:",
+                "   ITC as per GSTR-2B",
+                "   ITC as per Books",
+                "   ITC Difference",
+                "══════════════════════════",
+                "📈 Match Percentage"
             ],
-            "Count": [
-                summary["Total_Invoices_2B"],
-                summary["Total_Invoices_Books"],
-                summary["Total_Matched"],
-                summary["Total_Missing_Books"],
-                summary["Total_Missing_2B"],
-                len(results["value_mismatch"]),
-                len(results["tax_mismatch"]),
+            "Count/Amount": [
                 "",
                 "",
                 "",
                 "",
-                f"{summary['Match_Percentage']}%"
-            ],
-            "Amount (₹)": [
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
+                f"{summary['Total_Invoices_2B']:,.0f}",
+                f"{summary['Total_Invoices_Books']:,.0f}",
+                f"{summary['Total_Matched']:,.0f}",
+                f"{summary['Total_Missing_Books']:,.0f}",
+                f"{summary['Total_Missing_2B']:,.0f}",
+                f"{len(results['value_mismatch']):,.0f}",
+                f"{len(results['tax_mismatch']):,.0f}",
                 "",
                 "",
                 f"₹{summary['Total_ITC_2B']:,.2f}",
                 f"₹{summary['Total_ITC_Books']:,.2f}",
                 f"₹{summary['ITC_Difference']:,.2f}",
-                ""
+                "",
+                f"{summary['Match_Percentage']}%"
+            ],
+            "Status": [
+                "",
+                "",
+                "",
+                "",
+                "✓",
+                "✓",
+                "✅",
+                "❌",
+                "❌",
+                "⚠️",
+                "⚠️",
+                "",
+                "",
+                "📌",
+                "📌",
+                "⚠️",
+                "",
+                "🎯"
             ]
         }
         
-        pd.DataFrame(summary_data).to_excel(writer, sheet_name="Executive Summary", index=False)
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name="Executive Summary", index=False, startrow=0)
         
-        # Format summary sheet
+        # Format summary sheet with borders
         summary_sheet = writer.sheets["Executive Summary"]
-        summary_sheet.set_column("A:A", 35)
-        summary_sheet.set_column("B:B", 15)
-        summary_sheet.set_column("C:C", 20)
         
-        # ===== SHEET 2: FULLY MATCHED (SIMPLIFIED) ===== #
+        # Create border format for summary sheet
+        border_format = workbook.add_format({
+            "font_name": font_name,
+            "font_size": 11,
+            "border": 1,
+            "valign": "vcenter"
+        })
+        
+        bold_border_format = workbook.add_format({
+            "bold": True,
+            "font_name": font_name,
+            "font_size": 11,
+            "border": 1,
+            "valign": "vcenter"
+        })
+        
+        summary_sheet.set_column("A:A", 35, border_format)
+        summary_sheet.set_column("B:B", 20, border_format)
+        summary_sheet.set_column("C:C", 10, border_format)
+        
+        # Apply bold to header rows
+        summary_sheet.write(0, 0, "Particulars", summary_header)
+        summary_sheet.write(0, 1, "Count/Amount", summary_header)
+        summary_sheet.write(0, 2, "Status", summary_header)
+        
+        # ===== SHEET 2: FULLY MATCHED ===== #
         if not results["fully_matched"].empty:
             simple_matched = results["fully_matched"][[
                 "GSTIN_2B", 
@@ -294,7 +421,7 @@ if "results" in st.session_state:
     st.download_button(
         "⬇ Download Professional Excel Report",
         data=output,
-        file_name="GST_Reconciliation_Report.xlsx",
+        file_name=f"GST_Reconciliation_Report_{datetime.now().strftime('%d%m%Y')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
