@@ -105,7 +105,6 @@ if "results" in st.session_state:
         workbook = writer.book
         
         # === FONT CONFIGURATION ===
-        # Try to set Aptos Narrow, fallback to Calibri
         try:
             workbook.add_format({'font_name': 'Aptos Narrow'})
             font_name = 'Aptos Narrow'
@@ -113,14 +112,14 @@ if "results" in st.session_state:
             font_name = 'Calibri'
         
         # === FORMATS ===
-        # Header format - ONLY for Summary sheet (with borders)
+        # Header format for Summary sheet (NO BORDERS as requested)
         summary_header = workbook.add_format({
             "bold": True,
             "font_name": font_name,
             "font_size": 11,
             "bg_color": "#4472C4",
             "font_color": "white",
-            "border": 1,
+            "border": 0,  # NO BORDERS
             "align": "center",
             "valign": "vcenter"
         })
@@ -178,14 +177,14 @@ if "results" in st.session_state:
         })
         
         def write_sheet(df, name, columns_to_show=None, is_summary=False):
-            """Write dataframe with clean column selection"""
+            """Write dataframe with clean column selection - NO HEADER DUPLICATION"""
             if df.empty:
+                # For empty sheets, create a simple message
                 empty_df = pd.DataFrame({"Message": ["No records found"]})
-                empty_df.to_excel(writer, sheet_name=name[:31], index=False, startrow=1)
+                empty_df.to_excel(writer, sheet_name=name[:31], index=False, header=True, startrow=0)
                 worksheet = writer.sheets[name[:31]]
                 
-                # Write header
-                worksheet.write(0, 0, "Message", summary_header if is_summary else regular_header)
+                # Format the message column
                 worksheet.set_column(0, 0, 30, text_format)
                 return
                 
@@ -200,15 +199,17 @@ if "results" in st.session_state:
             for col in date_columns:
                 if col in display_df.columns:
                     display_df[col] = pd.to_datetime(display_df[col], errors='coerce').dt.date
-                
-            display_df.to_excel(writer, sheet_name=name[:31], index=False, startrow=1)
+            
+            # Write to Excel with headers (this writes headers in row 0)
+            display_df.to_excel(writer, sheet_name=name[:31], index=False, header=True, startrow=0)
             worksheet = writer.sheets[name[:31]]
             
-            # Write headers manually with proper formatting
+            # Now format the headers that were written by to_excel
             for col_num, column in enumerate(display_df.columns):
+                # Write over the header with our formatted version
                 worksheet.write(0, col_num, column, summary_header if is_summary else regular_header)
             
-            # Apply formatting to data rows
+            # Apply formatting to data rows (starting from row 1)
             for col_num, column in enumerate(display_df.columns):
                 # Calculate column width
                 if not display_df[column].isna().all():
@@ -232,7 +233,7 @@ if "results" in st.session_state:
                 else:
                     worksheet.set_column(col_num, col_num, max_len, text_format)
         
-        # ===== SHEET 1: EXECUTIVE SUMMARY (WITH BORDERS) ===== #
+        # ===== SHEET 1: EXECUTIVE SUMMARY (NO BORDERS) ===== #
         summary_data = {
             "Particulars": [
                 "📊 RECONCILIATION SUMMARY",
@@ -297,35 +298,28 @@ if "results" in st.session_state:
         }
         
         summary_df = pd.DataFrame(summary_data)
-        summary_df.to_excel(writer, sheet_name="Executive Summary", index=False, startrow=0)
-        
-        # Format summary sheet with borders
+        summary_df.to_excel(writer, sheet_name="Executive Summary", index=False, header=False, startrow=0)
         summary_sheet = writer.sheets["Executive Summary"]
         
-        # Create border format for summary sheet
-        border_format = workbook.add_format({
+        # Format summary sheet - NO BORDERS
+        no_border_format = workbook.add_format({
             "font_name": font_name,
             "font_size": 11,
-            "border": 1,
+            "border": 0,
             "valign": "vcenter"
         })
         
-        bold_border_format = workbook.add_format({
+        bold_no_border_format = workbook.add_format({
             "bold": True,
             "font_name": font_name,
             "font_size": 11,
-            "border": 1,
+            "border": 0,
             "valign": "vcenter"
         })
         
-        summary_sheet.set_column("A:A", 35, border_format)
-        summary_sheet.set_column("B:B", 20, border_format)
-        summary_sheet.set_column("C:C", 10, border_format)
-        
-        # Apply bold to header rows
-        summary_sheet.write(0, 0, "Particulars", summary_header)
-        summary_sheet.write(0, 1, "Count/Amount", summary_header)
-        summary_sheet.write(0, 2, "Status", summary_header)
+        summary_sheet.set_column("A:A", 35, no_border_format)
+        summary_sheet.set_column("B:B", 20, no_border_format)
+        summary_sheet.set_column("C:C", 10, no_border_format)
         
         # ===== SHEET 2: FULLY MATCHED ===== #
         if not results["fully_matched"].empty:
