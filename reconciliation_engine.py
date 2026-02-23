@@ -194,12 +194,19 @@ def parse_gstr2b(df):
 
 def reconcile(gstr2b_df, tally_df):
     # Create keys for matching
+    gstr2b_df = gstr2b_df.copy()
+    tally_df = tally_df.copy()
+    
     gstr2b_df["KEY"] = gstr2b_df["GSTIN"] + "|" + gstr2b_df["Invoice_No"]
     tally_df["KEY"] = tally_df["GSTIN"] + "|" + tally_df["Invoice_No"]
     
     # Find missing records
-    missing_books = gstr2b_df[~gstr2b_df["KEY"].isin(tally_df["KEY"])]
-    missing_2b = tally_df[~tally_df["KEY"].isin(gstr2b_df["KEY"])]
+    missing_books = gstr2b_df[~gstr2b_df["KEY"].isin(tally_df["KEY"])].copy()
+    missing_2b = tally_df[~tally_df["KEY"].isin(gstr2b_df["KEY"])].copy()
+    
+    # Calculate missing ITC values
+    missing_books_value = missing_books["TOTAL_TAX"].sum() if not missing_books.empty else 0
+    missing_2b_value = missing_2b["TOTAL_TAX"].sum() if not missing_2b.empty else 0
     
     # Merge matched records
     merged = pd.merge(
@@ -217,9 +224,9 @@ def reconcile(gstr2b_df, tally_df):
     merged["TAX_MATCH"] = abs(merged["TAX_DIFFERENCE"]) <= 1
     
     # Categorize matches
-    fully_matched = merged[merged["VALUE_MATCH"] & merged["TAX_MATCH"]]
-    value_mismatch = merged[~merged["VALUE_MATCH"]]
-    tax_mismatch = merged[merged["VALUE_MATCH"] & ~merged["TAX_MATCH"]]
+    fully_matched = merged[merged["VALUE_MATCH"] & merged["TAX_MATCH"]].copy()
+    value_mismatch = merged[~merged["VALUE_MATCH"]].copy()
+    tax_mismatch = merged[merged["VALUE_MATCH"] & ~merged["TAX_MATCH"]].copy()
     
     # Calculate summary statistics
     match_percent = round(
@@ -233,6 +240,8 @@ def reconcile(gstr2b_df, tally_df):
         "Total_Matched": len(fully_matched),
         "Total_Missing_Books": len(missing_books),
         "Total_Missing_2B": len(missing_2b),
+        "Total_Missing_Books_value": round(missing_books_value, 2),
+        "Total_Missing_2B_value": round(missing_2b_value, 2),
         "Match_Percentage": match_percent,
         "Total_ITC_Books": round(tally_df["TOTAL_TAX"].sum(),2),
         "Total_ITC_2B": round(gstr2b_df["TOTAL_TAX"].sum(),2),
