@@ -13,6 +13,7 @@ def clean_string(val):
 def clean_invoice(inv):
     if pd.isna(inv):
         return ""
+    # Fully alphanumeric for safe match
     return re.sub(r"[^A-Z0-9]", "", str(inv).upper())
 
 def validate_gstin(gstin):
@@ -23,25 +24,44 @@ def validate_gstin(gstin):
 
 
 # ===========================================
-# TAX COLUMN DETECTOR
+# INTELLIGENT TAX COLUMN DETECTOR
 # ===========================================
 
 def detect_tax_columns(df):
 
     patterns = {
-        'CGST': ['cgst','central gst','input cgst','itc cgst'],
-        'SGST': ['sgst','state gst','input sgst','itc sgst'],
-        'IGST': ['igst','integrated gst','input igst','itc igst']
+        'CGST': [
+            'input cgst','cgst input','itc cgst','cgst itc',
+            'central gst','central tax','cgst','c.g.s.t',
+            'cgst@','cgst%','cgst amount','cgst amt'
+        ],
+        'SGST': [
+            'input sgst','sgst input','itc sgst','sgst itc',
+            'state gst','state tax','sgst','s.g.s.t',
+            'sgst@','sgst%','sgst amount','sgst amt',
+            'st/gst','stgst'
+        ],
+        'IGST': [
+            'input igst','igst input','itc igst','igst itc',
+            'integrated gst','integrated tax','igst','i.g.s.t',
+            'igst@','igst%','igst amount','igst amt'
+        ]
     }
 
     tax_cols = {'CGST': [], 'SGST': [], 'IGST': []}
 
     for col in df.columns:
-        col_clean = str(col).lower().replace(" ","")
+        col_clean = str(col).lower().replace(" ", "").replace("_","").replace("-","")
+        col_space = " " + str(col).lower() + " "
 
         for tax_type, pattern_list in patterns.items():
             for pattern in pattern_list:
-                if pattern.replace(" ","") in col_clean:
+                p_clean = pattern.replace(" ","").replace("_","")
+                p_space = " " + pattern + " "
+
+                if (p_clean in col_clean or
+                    pattern in col_space or
+                    all(word in col_space for word in pattern.split())):
                     tax_cols[tax_type].append(col)
                     break
 
@@ -56,6 +76,7 @@ def parse_tally(df):
 
     df = df.copy()
 
+    # Detect header safely
     header_idx = None
     for i in range(min(len(df), 30)):
         row = " ".join(df.iloc[i].astype(str).str.lower().values)
@@ -87,48 +108,41 @@ def parse_tally(df):
     df["Invoice_No"] = df["Invoice_No"].apply(clean_invoice)
     df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"], errors="coerce", dayfirst=True)
 
+    # Intelligent tax detection
     tax_cols = detect_tax_columns(df)
 
-    df["CGST"] = df[tax_cols['CGST']].apply(pd.to_numeric,errors="coerce").sum(axis=1) if tax_cols['CGST'] else 0
-    df["SGST"] = df[tax_cols['SGST']].apply(pd.to_numeric,errors="coerce").sum(axis=1) if tax_cols['SGST'] else 0
-    df["IGST"] = df[tax_cols['IGST']].apply(pd.to_numeric,errors="coerce").sum(axis=1) if tax_cols['IGST'] else 0
+    df["CGST"] = df[tax_cols['CGST']].apply(pd.to_numeric,errors='coerce').sum(axis=1) if tax_cols['CGST'] else 0
+    df["SGST"] = df[tax_cols['SGST']].apply(pd.to_numeric,errors='coerce').sum(axis=1) if tax_cols['SGST'] else 0
+    df["IGST"] = df[tax_cols['IGST']].apply(pd.to_numeric,errors='coerce').sum(axis=1) if tax_cols['IGST'] else 0
+
+    # TDS detection
+    tds_cols = [c for c in df.columns if any(x in str(c).lower() for x in
+        ['tds','t.d.s','tax deducted','tax deducted at source'])]
+
+    df["TDS"] = df[tds_cols].apply(pd.to_numeric,errors="coerce").sum(axis=1).fillna(0) if tds_cols else 0
 
     df["Invoice_Value"] = pd.to_numeric(df["Invoice_Value"], errors="coerce")
     df["TOTAL_TAX"] = df["CGST"] + df["SGST"] + df["IGST"]
-    df["Taxable_Value"] = df["Invoice_Value"] - df["TOTAL_TAX"]
 
-    # ============================
-    # 🟡 NO ITC DETECTION
-    # ============================
+    # Correct formula
+    df["Taxable_Value"] = df["Invoice_Value"] + df["TDS"] - df["TOTAL_TAX"]
 
-    no_itc_df = df[df["TOTAL_TAX"] == 0].copy()
-
-    # ============================
-    # ⚠ INVALID GSTIN DETECTION
-    # ============================
-
-    invalid_gstin_df = df[~df["GSTIN"].apply(validate_gstin)].copy()
-
-    # Remove invalid GSTIN invoices from reconciliation
-    df = df[df["GSTIN"].apply(validate_gstin)]
+    # GSTIN validation
+    df["GSTIN_VALID"] = df["GSTIN"].apply(validate_gstin)
+    if (~df["GSTIN_VALID"]).sum() > 0:
+        raise Exception("Invalid GSTIN found in Tally file.")
 
     df = df.drop_duplicates(subset=["GSTIN","Invoice_No"])
     df = df[df["Invoice_Date"].notna()]
 
-    valid_df = df[[
+    return df[[
         "GSTIN","Trade_Name","Invoice_No","Invoice_Date",
         "Taxable_Value","Invoice_Value","IGST","CGST","SGST","TOTAL_TAX"
     ]]
 
-    return {
-        "valid_data": valid_df,
-        "no_itc": no_itc_df,
-        "invalid_gstin": invalid_gstin_df
-    }
-
 
 # ===========================================
-# PARSE GSTR2B
+# PARSE GSTR-2B (Structured Format Only)
 # ===========================================
 
 def parse_gstr2b(df):
@@ -182,21 +196,49 @@ def reconcile(gstr2b_df, tally_df):
     missing_books = gstr2b_df[~gstr2b_df["KEY"].isin(tally_df["KEY"])]
     missing_2b = tally_df[~tally_df["KEY"].isin(gstr2b_df["KEY"])]
 
-    merged = pd.merge(gstr2b_df, tally_df, on="KEY", suffixes=("_2B","_Tally"))
+    merged = pd.merge(
+        gstr2b_df,
+        tally_df,
+        on="KEY",
+        suffixes=("_2B","_Tally")
+    )
 
-    merged["VALUE_DIFFERENCE"] = merged["Taxable_Value_2B"] - merged["Taxable_Value_Tally"]
-    merged["TAX_DIFFERENCE"] = merged["TOTAL_TAX_2B"] - merged["TOTAL_TAX_Tally"]
+    # Differences
+    merged["VALUE_DIFFERENCE"] = (
+        merged["Taxable_Value_2B"]
+        - merged["Taxable_Value_Tally"]
+    )
 
-    merged["VALUE_MATCH"] = abs(merged["VALUE_DIFFERENCE"]) <= 1
-    merged["TAX_MATCH"] = abs(merged["TAX_DIFFERENCE"]) <= 1
+    merged["TAX_DIFFERENCE"] = (
+        merged["TOTAL_TAX_2B"]
+        - merged["TOTAL_TAX_Tally"]
+    )
 
-    fully_matched = merged[merged["VALUE_MATCH"] & merged["TAX_MATCH"]]
-    value_mismatch = merged[~merged["VALUE_MATCH"]]
-    tax_mismatch = merged[merged["VALUE_MATCH"] & ~merged["TAX_MATCH"]]
+    # Matching Logic
+    merged["VALUE_MATCH"] = (
+        abs(merged["VALUE_DIFFERENCE"]) <= 1
+    )
+
+    merged["TAX_MATCH"] = (
+        abs(merged["TAX_DIFFERENCE"]) <= 1
+    )
+
+    fully_matched = merged[
+        merged["VALUE_MATCH"] & merged["TAX_MATCH"]
+    ]
+
+    value_mismatch = merged[
+        ~merged["VALUE_MATCH"]
+    ]
+
+    tax_mismatch = merged[
+        merged["VALUE_MATCH"] & ~merged["TAX_MATCH"]
+    ]
 
     match_percent = round(
         (len(fully_matched) / len(gstr2b_df) * 100)
-        if len(gstr2b_df) else 0, 2
+        if len(gstr2b_df) else 0,
+        2
     )
 
     summary = {
@@ -210,7 +252,8 @@ def reconcile(gstr2b_df, tally_df):
         "Total_ITC_2B": round(gstr2b_df["TOTAL_TAX"].sum(),2),
         "ITC_Difference": round(
             gstr2b_df["TOTAL_TAX"].sum()
-            - tally_df["TOTAL_TAX"].sum(),2
+            - tally_df["TOTAL_TAX"].sum(),
+            2
         )
     }
 
