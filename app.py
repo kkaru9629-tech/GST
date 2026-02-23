@@ -49,23 +49,23 @@ if "results" in st.session_state:
 
     st.markdown("## 📊 Executive Summary")
 
-    r1c1, r1c2, r1c3 = st.columns(3)
-    r1c1.metric("Total Invoices - Books", summary["Total_Invoices_Books"])
-    r1c2.metric("Total Invoices - GSTR-2B", summary["Total_Invoices_2B"])
-    r1c3.metric("Fully Matched Invoices", summary["Total_Matched"])
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Invoices - Books", summary["Total_Invoices_Books"])
+    c2.metric("Total Invoices - GSTR-2B", summary["Total_Invoices_2B"])
+    c3.metric("Fully Matched Invoices", summary["Total_Matched"])
 
     st.divider()
 
-    r2c1, r2c2, r2c3 = st.columns(3)
-    r2c1.metric("Total ITC - Books", f"₹{summary['Total_ITC_Books']:,.2f}")
-    r2c2.metric("Total ITC - GSTR-2B", f"₹{summary['Total_ITC_2B']:,.2f}")
-    r2c3.metric("Overall ITC Difference", f"₹{summary['ITC_Difference']:,.2f}")
+    c4, c5, c6 = st.columns(3)
+    c4.metric("Total ITC - Books", f"₹{summary['Total_ITC_Books']:,.2f}")
+    c5.metric("Total ITC - GSTR-2B", f"₹{summary['Total_ITC_2B']:,.2f}")
+    c6.metric("Overall ITC Difference", f"₹{summary['ITC_Difference']:,.2f}")
 
     st.divider()
 
-    r3c1, r3c2 = st.columns(2)
-    r3c1.metric("Invoices Missing in Books", summary["Total_Missing_Books"])
-    r3c2.metric("Invoices Missing in GSTR-2B", summary["Total_Missing_2B"])
+    c7, c8 = st.columns(2)
+    c7.metric("Invoices Missing in Books", summary["Total_Missing_Books"])
+    c8.metric("Invoices Missing in GSTR-2B", summary["Total_Missing_2B"])
 
     st.divider()
 
@@ -87,7 +87,11 @@ if "results" in st.session_state:
             df = results["fully_matched"][[
                 "GSTIN_2B","Trade_Name_2B","Invoice_No_2B",
                 "Invoice_Date_2B","Taxable_Value_2B","TOTAL_TAX_2B"
-            ]].rename(columns={
+            ]].copy()
+
+            df["Invoice_Date_2B"] = pd.to_datetime(df["Invoice_Date_2B"]).dt.date
+
+            df = df.rename(columns={
                 "GSTIN_2B":"GSTIN",
                 "Trade_Name_2B":"Supplier Name",
                 "Invoice_No_2B":"Invoice Number",
@@ -95,6 +99,7 @@ if "results" in st.session_state:
                 "Taxable_Value_2B":"Taxable Value",
                 "TOTAL_TAX_2B":"ITC Amount"
             })
+
             st.dataframe(df, use_container_width=True)
         else:
             st.success("No fully matched invoices.")
@@ -105,30 +110,40 @@ if "results" in st.session_state:
             df = results["missing_in_books"][[
                 "GSTIN","Trade_Name","Invoice_No",
                 "Invoice_Date","Taxable_Value","TOTAL_TAX"
-            ]].rename(columns={
+            ]].copy()
+
+            df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"]).dt.date
+
+            df = df.rename(columns={
                 "Trade_Name":"Supplier Name",
                 "Invoice_No":"Invoice Number",
                 "Invoice_Date":"Invoice Date",
                 "Taxable_Value":"Taxable Value",
                 "TOTAL_TAX":"ITC Amount"
             })
+
             st.dataframe(df, use_container_width=True)
         else:
             st.success("No invoices missing in Books.")
 
-    # ===== MISSING IN GSTR-2B =====
+    # ===== MISSING IN 2B =====
     with tab3:
         if not results["missing_in_2b"].empty:
             df = results["missing_in_2b"][[
                 "GSTIN","Trade_Name","Invoice_No",
                 "Invoice_Date","Taxable_Value","TOTAL_TAX"
-            ]].rename(columns={
+            ]].copy()
+
+            df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"]).dt.date
+
+            df = df.rename(columns={
                 "Trade_Name":"Supplier Name",
                 "Invoice_No":"Invoice Number",
                 "Invoice_Date":"Invoice Date",
                 "Taxable_Value":"Taxable Value",
                 "TOTAL_TAX":"ITC Amount"
             })
+
             st.dataframe(df, use_container_width=True)
         else:
             st.success("No invoices missing in GSTR-2B.")
@@ -140,7 +155,11 @@ if "results" in st.session_state:
                 "GSTIN_2B","Trade_Name_2B","Invoice_No_2B",
                 "Invoice_Date_2B",
                 "Taxable_Value_2B","Taxable_Value_Tally","VALUE_DIFFERENCE"
-            ]].rename(columns={
+            ]].copy()
+
+            df["Invoice_Date_2B"] = pd.to_datetime(df["Invoice_Date_2B"]).dt.date
+
+            df = df.rename(columns={
                 "GSTIN_2B":"GSTIN",
                 "Trade_Name_2B":"Supplier Name",
                 "Invoice_No_2B":"Invoice Number",
@@ -149,6 +168,7 @@ if "results" in st.session_state:
                 "Taxable_Value_Tally":"Value as per Books",
                 "VALUE_DIFFERENCE":"Value Difference"
             })
+
             st.dataframe(df, use_container_width=True)
         else:
             st.success("No value mismatches found.")
@@ -160,7 +180,11 @@ if "results" in st.session_state:
                 "GSTIN_2B","Trade_Name_2B","Invoice_No_2B",
                 "Invoice_Date_2B",
                 "TOTAL_TAX_2B","TOTAL_TAX_Tally","TAX_DIFFERENCE"
-            ]].rename(columns={
+            ]].copy()
+
+            df["Invoice_Date_2B"] = pd.to_datetime(df["Invoice_Date_2B"]).dt.date
+
+            df = df.rename(columns={
                 "GSTIN_2B":"GSTIN",
                 "Trade_Name_2B":"Supplier Name",
                 "Invoice_No_2B":"Invoice Number",
@@ -169,6 +193,7 @@ if "results" in st.session_state:
                 "TOTAL_TAX_Tally":"ITC as per Books",
                 "TAX_DIFFERENCE":"ITC Difference"
             })
+
             st.dataframe(df, use_container_width=True)
         else:
             st.success("No tax mismatches found.")
@@ -179,15 +204,50 @@ if "results" in st.session_state:
             df = results["no_itc"][[
                 "GSTIN","Trade_Name","Invoice_No",
                 "Invoice_Date","Taxable_Value","Invoice_Value"
-            ]].rename(columns={
+            ]].copy()
+
+            df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"]).dt.date
+
+            df = df.rename(columns={
                 "Trade_Name":"Supplier Name",
                 "Invoice_No":"Invoice Number",
                 "Invoice_Date":"Invoice Date"
             })
+
             st.dataframe(df, use_container_width=True)
         else:
             st.success("No Zero ITC invoices found.")
 
-    # ===== SUPPLIER ANALYSIS (UNCHANGED) =====
+    # ===== SUPPLIER ANALYSIS =====
     with tab7:
-        st.write("Supplier Analysis stays same (unchanged as requested).")
+
+        combined = results["fully_matched"].copy()
+
+        if not results["value_mismatch"].empty:
+            combined = pd.concat([combined, results["value_mismatch"]])
+
+        if not results["tax_mismatch"].empty:
+            combined = pd.concat([combined, results["tax_mismatch"]])
+
+        if not combined.empty:
+
+            combined["Supplier"] = combined["Trade_Name_2B"]
+
+            pivot = combined.groupby("Supplier").agg(
+                Total_Invoices=("Invoice_No_2B", "count"),
+                ITC_2B=("TOTAL_TAX_2B", "sum"),
+                ITC_Books=("TOTAL_TAX_Tally", "sum"),
+                Total_Value_Difference=("VALUE_DIFFERENCE", "sum"),
+                Total_Tax_Difference=("TAX_DIFFERENCE", "sum")
+            ).reset_index()
+
+            pivot["Absolute ITC Difference"] = (
+                abs(pivot["ITC_2B"] - pivot["ITC_Books"])
+            )
+
+            pivot = pivot.sort_values("Absolute ITC Difference", ascending=False)
+
+            st.dataframe(pivot, use_container_width=True)
+
+        else:
+            st.info("No supplier data available.")
