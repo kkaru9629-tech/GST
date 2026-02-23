@@ -108,14 +108,13 @@ def parse_tally(df):
     df["Invoice_No"] = df["Invoice_No"].apply(clean_invoice)
     df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"], errors="coerce", dayfirst=True)
 
-    # Intelligent tax detection
     tax_cols = detect_tax_columns(df)
 
     df["CGST"] = df[tax_cols['CGST']].apply(pd.to_numeric,errors='coerce').sum(axis=1) if tax_cols['CGST'] else 0
     df["SGST"] = df[tax_cols['SGST']].apply(pd.to_numeric,errors='coerce').sum(axis=1) if tax_cols['SGST'] else 0
     df["IGST"] = df[tax_cols['IGST']].apply(pd.to_numeric,errors='coerce').sum(axis=1) if tax_cols['IGST'] else 0
 
-    # TDS detection
+    # TDS detection (original logic intact)
     tds_cols = [c for c in df.columns if any(x in str(c).lower() for x in
         ['tds','t.d.s','tax deducted','tax deducted at source'])]
 
@@ -124,13 +123,23 @@ def parse_tally(df):
     df["Invoice_Value"] = pd.to_numeric(df["Invoice_Value"], errors="coerce")
     df["TOTAL_TAX"] = df["CGST"] + df["SGST"] + df["IGST"]
 
-    # Correct formula
     df["Taxable_Value"] = df["Invoice_Value"] + df["TDS"] - df["TOTAL_TAX"]
 
-    # GSTIN validation
+    # ===============================
+    # ✅ NEW FEATURE 1 — NO ITC
+    # ===============================
+
+    no_itc_df = df[df["TOTAL_TAX"] == 0].copy()
+
+    # ===============================
+    # ✅ NEW FEATURE 2 — INVALID GSTIN
+    # ===============================
+
     df["GSTIN_VALID"] = df["GSTIN"].apply(validate_gstin)
-    if (~df["GSTIN_VALID"]).sum() > 0:
-        raise Exception("Invalid GSTIN found in Tally file.")
+    invalid_gstin_df = df[~df["GSTIN_VALID"]].copy()
+
+    # Skip invalid GSTIN invoices
+    df = df[df["GSTIN_VALID"]]
 
     df = df.drop_duplicates(subset=["GSTIN","Invoice_No"])
     df = df[df["Invoice_Date"].notna()]
@@ -138,12 +147,7 @@ def parse_tally(df):
     return df[[
         "GSTIN","Trade_Name","Invoice_No","Invoice_Date",
         "Taxable_Value","Invoice_Value","IGST","CGST","SGST","TOTAL_TAX"
-    ]]
-
-
-# ===========================================
-# PARSE GSTR-2B (Structured Format Only)
-# ===========================================
+    ]], no_itc_df, invalid_gstin_df
 
 def parse_gstr2b(df):
 
