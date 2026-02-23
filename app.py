@@ -7,7 +7,7 @@ from datetime import datetime
 st.set_page_config(page_title="GST Reconciliation", layout="wide")
 
 st.title("📊 GST Reconciliation System")
-st.caption("Internal Office Tool | ITC Books vs GSTR-2B Comparison")
+st.caption("ITC Books vs GSTR-2B Comparison")
 
 col1, col2 = st.columns(2)
 
@@ -45,194 +45,227 @@ if "results" in st.session_state:
     results = st.session_state["results"]
     summary = results["summary"]
 
-    # ================= INDIAN FORMAT SUMMARY ================= #
+    # ================= SIMPLE SUMMARY ================= #
     
-    st.markdown("## 📌 RECONCILIATION SUMMARY")
-    st.markdown("══════════════════════════════")
+    st.markdown("## 📌 Summary")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("### 📋 INVOICE COUNT SUMMARY:")
-        st.metric("Total Invoices in GSTR-2B", f"{summary['Total_Invoices_2B']:,}")
-        st.metric("Total Invoices in Books", f"{summary['Total_Invoices_Books']:,}")
-        st.metric("✅ Fully Matched Invoices", f"{summary['Total_Matched']:,}")
-        st.metric("❌ Missing in Books", f"{summary['Total_Missing_Books']:,}")
-        st.metric("❌ Missing in GSTR-2B", f"{summary['Total_Missing_2B']:,}")
-        if 'value_mismatch' in results:
-            st.metric("⚠️ Value Mismatch", f"{len(results['value_mismatch']):,}")
-        if 'tax_mismatch' in results:
-            st.metric("⚠️ Tax Mismatch", f"{len(results['tax_mismatch']):,}")
+        st.metric("Total ITC - Books", f"₹{summary['Total_ITC_Books']:,.2f}")
+        st.metric("Missing in 2B (Books - 2B)", f"₹{summary['Total_Missing_2B_value']:,.2f}")
     
     with col2:
-        st.markdown("### 💰 ITC AMOUNT SUMMARY:")
-        st.metric("ITC as per GSTR-2B", f"₹{summary['Total_ITC_2B']:,.2f}")
-        st.metric("ITC as per Books", f"₹{summary['Total_ITC_Books']:,.2f}")
-        st.metric("ITC Difference", f"₹{summary['ITC_Difference']:,.2f}")
+        st.metric("Total ITC - GSTR-2B", f"₹{summary['Total_ITC_2B']:,.2f}")
+        st.metric("Missing in Books (2B - Books)", f"₹{summary['Total_Missing_Books_value']:,.2f}")
     
     with col3:
-        st.markdown("### 📈 MATCH PERCENTAGE:")
-        st.metric("Match %", f"{summary['Match_Percentage']} %")
-        if summary['Match_Percentage'] >= 90:
-            st.success("⭐ Excellent Match")
-        elif summary['Match_Percentage'] >= 75:
-            st.warning("⚠️ Needs Attention")
-        else:
-            st.error("🔴 Risk - Review Required")
+        st.metric("Net Difference", f"₹{summary['ITC_Difference']:,.2f}")
     
-    st.markdown("══════════════════════════════")
     st.divider()
-
-    # ================= INVALID GSTIN SECTION ================= #
-
-    if not results["invalid_gstin"].empty:
-        st.warning(f"⚠ {len(results['invalid_gstin'])} invoices skipped due to invalid GSTIN.")
-        with st.expander("View Invalid GSTIN Invoices"):
-            st.dataframe(results["invalid_gstin"], use_container_width=True)
 
     # ================= TABS ================= #
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "✅ Fully Matched",
-        "📕 Missing in Books",
-        "📗 Missing in GSTR-2B",
-        "💰 Value Mismatch",
-        "🧾 Tax Mismatch",
-        "🟡 NO ITC Invoices"
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "Books Data",
+        "GSTR-2B Data",
+        "Missing in 2B",
+        "Missing in Books",
+        "NO ITC Invoices",
+        "Invalid GSTIN",
+        "Supplier Analysis"
     ])
 
-    # ===== TAB 1: Fully Matched =====
+    # ===== TAB 1: Books Data (NO DATES) =====
     with tab1:
-        if not results["fully_matched"].empty:
-            display = results["fully_matched"][
-                ["GSTIN_2B", "Trade_Name_2B", "Invoice_No_2B", "Invoice_Date_2B", 
-                 "Taxable_Value_2B", "TOTAL_TAX_2B"]
-            ].copy()
+        if not results["missing_in_2b"].empty or not results["fully_matched"].empty:
+            books_data = pd.concat([
+                results["missing_in_2b"],
+                results["fully_matched"][["GSTIN", "Trade_Name", "Invoice_No", 
+                                          "Taxable_Value", "CGST", "SGST", "IGST", "TOTAL_TAX"]]
+            ], ignore_index=True) if "fully_matched" in results else results["missing_in_2b"]
             
-            display["Invoice_Date_2B"] = pd.to_datetime(display["Invoice_Date_2B"]).dt.date
-            display["Taxable_Value_2B"] = display["Taxable_Value_2B"].apply(lambda x: f"₹{x:,.2f}")
-            display["TOTAL_TAX_2B"] = display["TOTAL_TAX_2B"].apply(lambda x: f"₹{x:,.2f}")
+            display = books_data[["Trade_Name", "GSTIN", "Invoice_No", 
+                                   "Taxable_Value", "CGST", "SGST", "IGST", "TOTAL_TAX"]].copy()
             
-            display.columns = [
-                "GSTIN", "Supplier Name", "Invoice Number", 
-                "Invoice Date", "Taxable Value", "ITC Amount"
-            ]
+            for col in ["Taxable_Value", "CGST", "SGST", "IGST", "TOTAL_TAX"]:
+                display[col] = display[col].apply(lambda x: f"₹{x:,.2f}")
             
-            st.dataframe(display, use_container_width=True)
+            display.columns = ["Supplier Name", "GSTIN", "Invoice No", 
+                                "Taxable Value", "CGST", "SGST", "IGST", "Total ITC"]
+            
+            st.dataframe(display, use_container_width=True, hide_index=True)
         else:
-            st.info("No fully matched invoices.")
+            st.info("No books data available.")
 
-    # ===== TAB 2: Missing in Books =====
+    # ===== TAB 2: GSTR-2B Data (NO DATES) =====
     with tab2:
-        if not results["missing_in_books"].empty:
-            display = results["missing_in_books"][
-                ["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", 
-                 "Taxable_Value", "TOTAL_TAX"]
-            ].copy()
+        if not results["missing_in_books"].empty or not results["fully_matched"].empty:
+            gstr_data = pd.concat([
+                results["missing_in_books"],
+                results["fully_matched"][["GSTIN_2B", "Trade_Name_2B", "Invoice_No_2B",
+                                          "Taxable_Value_2B", "CGST_2B", "SGST_2B", "IGST_2B", "TOTAL_TAX_2B"]]
+            ], ignore_index=True) if "fully_matched" in results else results["missing_in_books"]
             
-            display["Invoice_Date"] = pd.to_datetime(display["Invoice_Date"]).dt.date
-            display["Taxable_Value"] = display["Taxable_Value"].apply(lambda x: f"₹{x:,.2f}")
-            display["TOTAL_TAX"] = display["TOTAL_TAX"].apply(lambda x: f"₹{x:,.2f}")
+            display = gstr_data[["Trade_Name_2B", "GSTIN_2B", "Invoice_No_2B",
+                                  "Taxable_Value_2B", "CGST_2B", "SGST_2B", "IGST_2B", "TOTAL_TAX_2B"]].copy()
             
-            display.columns = [
-                "GSTIN", "Supplier Name", "Invoice Number", 
-                "Invoice Date", "Taxable Value", "ITC Amount"
-            ]
+            for col in ["Taxable_Value_2B", "CGST_2B", "SGST_2B", "IGST_2B", "TOTAL_TAX_2B"]:
+                display[col] = display[col].apply(lambda x: f"₹{x:,.2f}")
             
-            st.dataframe(display, use_container_width=True)
+            display.columns = ["Supplier Name", "GSTIN", "Invoice No",
+                                "Taxable Value", "CGST", "SGST", "IGST", "Total ITC"]
+            
+            st.dataframe(display, use_container_width=True, hide_index=True)
         else:
-            st.success("No invoices missing in Books.")
+            st.info("No GSTR-2B data available.")
 
-    # ===== TAB 3: Missing in GSTR-2B =====
+    # ===== TAB 3: Missing in 2B =====
     with tab3:
         if not results["missing_in_2b"].empty:
             display = results["missing_in_2b"][
-                ["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", 
-                 "Taxable_Value", "TOTAL_TAX"]
+                ["Trade_Name", "GSTIN", "Invoice_No", "Taxable_Value", "TOTAL_TAX"]
             ].copy()
             
-            display["Invoice_Date"] = pd.to_datetime(display["Invoice_Date"]).dt.date
             display["Taxable_Value"] = display["Taxable_Value"].apply(lambda x: f"₹{x:,.2f}")
             display["TOTAL_TAX"] = display["TOTAL_TAX"].apply(lambda x: f"₹{x:,.2f}")
             
-            display.columns = [
-                "GSTIN", "Supplier Name", "Invoice Number", 
-                "Invoice Date", "Taxable Value", "ITC Amount"
-            ]
+            display.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "ITC Amount"]
             
-            st.dataframe(display, use_container_width=True)
+            st.dataframe(display, use_container_width=True, hide_index=True)
         else:
-            st.success("No invoices missing in GSTR-2B.")
+            st.success("No invoices missing in 2B.")
 
-    # ===== TAB 4: Value Mismatch =====
+    # ===== TAB 4: Missing in Books =====
     with tab4:
-        if not results["value_mismatch"].empty:
-            display = results["value_mismatch"][
-                ["GSTIN_2B", "Trade_Name_2B", "Invoice_No_2B", "Invoice_Date_2B",
-                 "Taxable_Value_2B", "Taxable_Value_Tally", "VALUE_DIFFERENCE"]
+        if not results["missing_in_books"].empty:
+            display = results["missing_in_books"][
+                ["Trade_Name", "GSTIN", "Invoice_No", "Taxable_Value", "TOTAL_TAX"]
             ].copy()
             
-            display["Invoice_Date_2B"] = pd.to_datetime(display["Invoice_Date_2B"]).dt.date
-            display["Taxable_Value_2B"] = display["Taxable_Value_2B"].apply(lambda x: f"₹{x:,.2f}")
-            display["Taxable_Value_Tally"] = display["Taxable_Value_Tally"].apply(lambda x: f"₹{x:,.2f}")
-            display["VALUE_DIFFERENCE"] = display["VALUE_DIFFERENCE"].apply(lambda x: f"₹{x:,.2f}")
+            display["Taxable_Value"] = display["Taxable_Value"].apply(lambda x: f"₹{x:,.2f}")
+            display["TOTAL_TAX"] = display["TOTAL_TAX"].apply(lambda x: f"₹{x:,.2f}")
             
-            display.columns = [
-                "GSTIN", "Supplier Name", "Invoice Number", "Invoice Date",
-                "Value (2B)", "Value (Books)", "Difference"
-            ]
+            display.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "ITC Amount"]
             
-            st.dataframe(display, use_container_width=True)
+            st.dataframe(display, use_container_width=True, hide_index=True)
         else:
-            st.success("No value mismatches found.")
+            st.success("No invoices missing in Books.")
 
-    # ===== TAB 5: Tax Mismatch =====
+    # ===== TAB 5: NO ITC =====
     with tab5:
-        if not results["tax_mismatch"].empty:
-            display = results["tax_mismatch"][
-                ["GSTIN_2B", "Trade_Name_2B", "Invoice_No_2B", "Invoice_Date_2B",
-                 "TOTAL_TAX_2B", "TOTAL_TAX_Tally", "TAX_DIFFERENCE"]
-            ].copy()
-            
-            display["Invoice_Date_2B"] = pd.to_datetime(display["Invoice_Date_2B"]).dt.date
-            display["TOTAL_TAX_2B"] = display["TOTAL_TAX_2B"].apply(lambda x: f"₹{x:,.2f}")
-            display["TOTAL_TAX_Tally"] = display["TOTAL_TAX_Tally"].apply(lambda x: f"₹{x:,.2f}")
-            display["TAX_DIFFERENCE"] = display["TAX_DIFFERENCE"].apply(lambda x: f"₹{x:,.2f}")
-            
-            display.columns = [
-                "GSTIN", "Supplier Name", "Invoice Number", "Invoice Date",
-                "ITC (2B)", "ITC (Books)", "Difference"
-            ]
-            
-            st.dataframe(display, use_container_width=True)
-        else:
-            st.success("No tax mismatches found.")
-
-    # ===== TAB 6: NO ITC =====
-    with tab6:
         if not results["no_itc"].empty:
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Total Invoices", f"{len(results['no_itc']):,}")
-            col2.metric("Total Taxable Value", f"₹{results['no_itc']['Taxable_Value'].sum():,.2f}")
-            col3.metric("Total Invoice Value", f"₹{results['no_itc']['Invoice_Value'].sum():,.2f}")
-            
             display = results["no_itc"][
-                ["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", 
-                 "Taxable_Value", "Invoice_Value"]
+                ["Trade_Name", "GSTIN", "Invoice_No", "Taxable_Value", "Invoice_Value"]
             ].copy()
             
-            display["Invoice_Date"] = pd.to_datetime(display["Invoice_Date"]).dt.date
             display["Taxable_Value"] = display["Taxable_Value"].apply(lambda x: f"₹{x:,.2f}")
             display["Invoice_Value"] = display["Invoice_Value"].apply(lambda x: f"₹{x:,.2f}")
             
-            display.columns = [
-                "GSTIN", "Supplier Name", "Invoice Number", 
-                "Invoice Date", "Taxable Value", "Invoice Value"
-            ]
+            display.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "Invoice Value"]
             
-            st.dataframe(display, use_container_width=True)
+            st.dataframe(display, use_container_width=True, hide_index=True)
         else:
             st.success("No zero ITC invoices found.")
+
+    # ===== TAB 6: Invalid GSTIN =====
+    with tab6:
+        if not results["invalid_gstin"].empty:
+            display = results["invalid_gstin"][
+                ["Trade_Name", "GSTIN", "Invoice_No", "Taxable_Value", "TOTAL_TAX"]
+            ].copy()
+            
+            display["Taxable_Value"] = display["Taxable_Value"].apply(lambda x: f"₹{x:,.2f}")
+            display["TOTAL_TAX"] = display["TOTAL_TAX"].apply(lambda x: f"₹{x:,.2f}")
+            
+            display.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "ITC Amount"]
+            
+            st.dataframe(display, use_container_width=True, hide_index=True)
+        else:
+            st.success("No invalid GSTIN invoices.")
+
+    # ===== TAB 7: Supplier Analysis =====
+    with tab7:
+        st.markdown("### 📊 Supplier-wise Analysis")
+        
+        # Prepare data
+        supplier_data = []
+        
+        # Get all unique suppliers from missing_in_2b and missing_in_books
+        all_suppliers = set()
+        
+        if not results["missing_in_2b"].empty:
+            for _, row in results["missing_in_2b"].iterrows():
+                all_suppliers.add((row["GSTIN"], row["Trade_Name"]))
+        
+        if not results["missing_in_books"].empty:
+            for _, row in results["missing_in_books"].iterrows():
+                all_suppliers.add((row["GSTIN"], row["Trade_Name"]))
+        
+        # Build supplier analysis
+        for gstin, name in all_suppliers:
+            books_itc = 0
+            gstr_itc = 0
+            missing_2b_count = 0
+            missing_2b_itc = 0
+            missing_books_count = 0
+            missing_books_itc = 0
+            total_invoices = 0
+            
+            # Missing in 2B (in Books but not in 2B)
+            if not results["missing_in_2b"].empty:
+                mask = results["missing_in_2b"]["GSTIN"] == gstin
+                missing_2b_count = mask.sum()
+                if missing_2b_count > 0:
+                    missing_2b_itc = results["missing_in_2b"].loc[mask, "TOTAL_TAX"].sum()
+                    books_itc += missing_2b_itc
+                    total_invoices += missing_2b_count
+            
+            # Missing in Books (in 2B but not in Books)
+            if not results["missing_in_books"].empty:
+                mask = results["missing_in_books"]["GSTIN"] == gstin
+                missing_books_count = mask.sum()
+                if missing_books_count > 0:
+                    missing_books_itc = results["missing_in_books"].loc[mask, "TOTAL_TAX"].sum()
+                    gstr_itc += missing_books_itc
+                    total_invoices += missing_books_count
+            
+            supplier_data.append({
+                "Supplier Name": name,
+                "GSTIN": gstin,
+                "Total Invoices": total_invoices,
+                "ITC - Books": books_itc,
+                "ITC - GSTR-2B": gstr_itc,
+                "Difference": gstr_itc - books_itc,
+                "Missing in 2B": missing_2b_count,
+                "Missing in 2B (ITC)": missing_2b_itc,
+                "Missing in Books": missing_books_count,
+                "Missing in Books (ITC)": missing_books_itc
+            })
+        
+        if supplier_data:
+            supplier_df = pd.DataFrame(supplier_data)
+            
+            # Format currency columns
+            for col in ["ITC - Books", "ITC - GSTR-2B", "Difference", "Missing in 2B (ITC)", "Missing in Books (ITC)"]:
+                supplier_df[col] = supplier_df[col].apply(lambda x: f"₹{x:,.2f}")
+            
+            # Sort by absolute difference (highest first)
+            supplier_df = supplier_df.sort_values("Difference", key=lambda x: abs(float(str(x).replace('₹', '').replace(',', ''))), ascending=False)
+            
+            st.dataframe(supplier_df, use_container_width=True, hide_index=True)
+            
+            # High Risk Suppliers (Top 5 by Difference)
+            st.markdown("### ⚠️ High Risk Suppliers")
+            high_risk = supplier_df.head(5)[["Supplier Name", "GSTIN", "Difference", "Missing in 2B", "Missing in Books"]]
+            st.dataframe(high_risk, use_container_width=True, hide_index=True)
+            
+            # High ITC Suppliers (Top 5 by ITC)
+            st.markdown("### 💰 High ITC Suppliers")
+            high_itc = supplier_df.nlargest(5, "ITC - Books")[["Supplier Name", "GSTIN", "ITC - Books"]]
+            st.dataframe(high_itc, use_container_width=True, hide_index=True)
+        else:
+            st.info("No supplier data available for analysis.")
 
     # ================= DOWNLOAD EXCEL REPORT ================= #
 
@@ -242,186 +275,266 @@ if "results" in st.session_state:
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         workbook = writer.book
         
+        # Set default font to Aptos Narrow
+        workbook.formats[0].set_font_name('Aptos Narrow')
+        
         # Formats
         title_format = workbook.add_format({
             'bold': True,
-            'font_size': 16,
-            'align': 'center',
-            'valign': 'vcenter'
+            'font_size': 14,
+            'font_name': 'Aptos Narrow',
+            'align': 'left'
         })
         
         header_format = workbook.add_format({
             'bold': True,
+            'font_name': 'Aptos Narrow',
             'bg_color': '#D9E1F2',
             'border': 1,
-            'align': 'center',
-            'valign': 'vcenter'
+            'align': 'center'
         })
         
-        text_format = workbook.add_format({'border': 1})
-        money_format = workbook.add_format({'num_format': '₹#,##0.00', 'border': 1})
+        text_format = workbook.add_format({'font_name': 'Aptos Narrow'})
+        money_format = workbook.add_format({'font_name': 'Aptos Narrow', 'num_format': '₹#,##0.00'})
         
-        # ===== EXECUTIVE SUMMARY SHEET =====
-        summary_sheet = workbook.add_worksheet("Executive Summary")
+        # ===== 1. SUMMARY SHEET =====
+        summary_sheet = workbook.add_worksheet("Summary")
+        
+        summary_sheet.set_column('A:A', 35)
+        summary_sheet.set_column('B:B', 25)
+        summary_sheet.set_column('C:C', 15)
         
         # Title
-        summary_sheet.merge_range("A1:B1", "GST RECONCILIATION SUMMARY REPORT", title_format)
-        summary_sheet.set_row(0, 30)
+        summary_sheet.write('A1', 'GST RECONCILIATION SUMMARY', title_format)
         
-        # Summary data
-        summary_data = [
-            ["══════════════════════════════", ""],
-            ["📋 INVOICE COUNT SUMMARY:", ""],
-            ["Total Invoices in GSTR-2B", summary["Total_Invoices_2B"]],
-            ["Total Invoices in Books", summary["Total_Invoices_Books"]],
-            ["✅ Fully Matched Invoices", summary["Total_Matched"]],
-            ["❌ Missing in Books", summary["Total_Missing_Books"]],
-            ["❌ Missing in GSTR-2B", summary["Total_Missing_2B"]],
-            ["⚠️ Value Mismatch", len(results.get("value_mismatch", pd.DataFrame()))],
-            ["⚠️ Tax Mismatch", len(results.get("tax_mismatch", pd.DataFrame()))],
-            ["", ""],
-            ["💰 ITC AMOUNT SUMMARY:", ""],
-            ["ITC as per GSTR-2B", summary["Total_ITC_2B"]],
-            ["ITC as per Books", summary["Total_ITC_Books"]],
-            ["ITC Difference", summary["ITC_Difference"]],
-            ["", ""],
-            ["📈 Match Percentage", f"{summary['Match_Percentage']} %"],
-            ["══════════════════════════════", ""]
+        # Summary Table
+        headers = ['Particulars', 'Amount', 'Status']
+        summary_sheet.write_row('A3', headers, header_format)
+        
+        summary_rows = [
+            ['Total ITC as per Books', summary['Total_ITC_Books'], ''],
+            ['Total ITC as per GSTR-2B', summary['Total_ITC_2B'], ''],
+            ['Missing in 2B (Books - 2B)', summary['Total_Missing_2B_value'], '❌' if summary['Total_Missing_2B_value'] > 0 else '✓'],
+            ['Missing in Books (2B - Books)', summary['Total_Missing_Books_value'], '❌' if summary['Total_Missing_Books_value'] > 0 else '✓'],
+            ['Net Difference', summary['ITC_Difference'], '⚠️' if abs(summary['ITC_Difference']) > 1000 else '✓']
         ]
         
-        row = 2
-        for i, (label, value) in enumerate(summary_data):
-            if "═════" in label or label == "":
-                summary_sheet.write(row, 0, label, text_format)
-                summary_sheet.write(row, 1, value, text_format)
-            elif "📋" in label or "💰" in label or "📈" in label:
-                summary_sheet.write(row, 0, label, title_format)
-            elif "ITC" in label:
-                summary_sheet.write(row, 0, label, text_format)
-                summary_sheet.write(row, 1, value, money_format)
-            else:
-                summary_sheet.write(row, 0, label, text_format)
-                summary_sheet.write(row, 1, value, text_format)
+        row = 3
+        for i, (label, value, status) in enumerate(summary_rows):
+            summary_sheet.write(row, 0, label, text_format)
+            summary_sheet.write(row, 1, value, money_format)
+            summary_sheet.write(row, 2, status, text_format)
             row += 1
         
-        summary_sheet.set_column("A:A", 40)
-        summary_sheet.set_column("B:B", 25)
+        # Conditional Formatting
+        summary_sheet.conditional_format(f'B4:B{row-1}', {
+            'type': 'cell',
+            'criteria': '>',
+            'value': 0,
+            'format': workbook.add_format({'font_name': 'Aptos Narrow', 'num_format': '₹#,##0.00', 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+        })
         
-        # ===== FUNCTION TO WRITE SHEETS =====
-        def write_formatted_sheet(df, sheet_name, columns_mapping):
-            if df.empty:
-                return
+        summary_sheet.conditional_format(f'B4:B{row-1}', {
+            'type': 'cell',
+            'criteria': '<',
+            'value': 0,
+            'format': workbook.add_format({'font_name': 'Aptos Narrow', 'num_format': '₹#,##0.00', 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+        })
+        
+        summary_sheet.add_table(f'A3:C{row-1}', {
+            'columns': [{'header': h} for h in headers],
+            'style': 'Table Style Light 1'
+        })
+        
+        # ===== 2. BOOKS DATA SHEET =====
+        if not results["missing_in_2b"].empty or not results["fully_matched"].empty:
+            books_sheet = workbook.add_worksheet("Books Data")
             
-            df_to_write = df[list(columns_mapping.keys())].copy()
-            df_to_write.to_excel(writer, sheet_name=sheet_name, index=False, startrow=1)
+            books_data = pd.concat([
+                results["missing_in_2b"],
+                results["fully_matched"][["GSTIN", "Trade_Name", "Invoice_No", 
+                                          "Taxable_Value", "CGST", "SGST", "IGST", "TOTAL_TAX"]]
+            ], ignore_index=True) if "fully_matched" in results else results["missing_in_2b"]
             
-            worksheet = writer.sheets[sheet_name]
+            books_data = books_data[["Trade_Name", "GSTIN", "Invoice_No", 
+                                      "Taxable_Value", "CGST", "SGST", "IGST", "TOTAL_TAX"]]
             
-            # Write title
-            worksheet.write(0, 0, f"{sheet_name} Invoices", title_format)
-            worksheet.merge_range(0, 0, 0, len(columns_mapping)-1, f"{sheet_name} Invoices", title_format)
+            books_data.columns = ["Supplier Name", "GSTIN", "Invoice No", 
+                                   "Taxable Value", "CGST", "SGST", "IGST", "Total ITC"]
             
-            # Write headers
-            for col_num, (_, new_name) in enumerate(columns_mapping.items()):
-                worksheet.write(1, col_num, new_name, header_format)
+            books_data.to_excel(writer, sheet_name="Books Data", index=False, startrow=1)
             
-            # Format columns
-            for col_num, (col_name, _) in enumerate(columns_mapping.items()):
-                if "Value" in col_name or "ITC" in col_name or "Tax" in col_name or "Amount" in col_name:
+            # Format
+            worksheet = writer.sheets["Books Data"]
+            worksheet.write(0, 0, "Books Data", title_format)
+            
+            for col_num, col in enumerate(books_data.columns):
+                worksheet.write(1, col_num, col, header_format)
+                if "Value" in col or "CGST" in col or "SGST" in col or "IGST" in col or "ITC" in col:
                     worksheet.set_column(col_num, col_num, 18, money_format)
                 else:
-                    worksheet.set_column(col_num, col_num, 20)
+                    worksheet.set_column(col_num, col_num, 22)
             
             worksheet.freeze_panes(2, 0)
         
-        # ===== WRITE ALL SHEETS =====
+        # ===== 3. GSTR-2B DATA SHEET =====
+        if not results["missing_in_books"].empty or not results["fully_matched"].empty:
+            gstr_sheet = workbook.add_worksheet("GSTR-2B Data")
+            
+            gstr_data = pd.concat([
+                results["missing_in_books"],
+                results["fully_matched"][["GSTIN_2B", "Trade_Name_2B", "Invoice_No_2B",
+                                          "Taxable_Value_2B", "CGST_2B", "SGST_2B", "IGST_2B", "TOTAL_TAX_2B"]]
+            ], ignore_index=True) if "fully_matched" in results else results["missing_in_books"]
+            
+            gstr_data = gstr_data[["Trade_Name_2B", "GSTIN_2B", "Invoice_No_2B",
+                                    "Taxable_Value_2B", "CGST_2B", "SGST_2B", "IGST_2B", "TOTAL_TAX_2B"]]
+            
+            gstr_data.columns = ["Supplier Name", "GSTIN", "Invoice No",
+                                  "Taxable Value", "CGST", "SGST", "IGST", "Total ITC"]
+            
+            gstr_data.to_excel(writer, sheet_name="GSTR-2B Data", index=False, startrow=1)
+            
+            # Format
+            worksheet = writer.sheets["GSTR-2B Data"]
+            worksheet.write(0, 0, "GSTR-2B Data", title_format)
+            
+            for col_num, col in enumerate(gstr_data.columns):
+                worksheet.write(1, col_num, col, header_format)
+                if "Value" in col or "CGST" in col or "SGST" in col or "IGST" in col or "ITC" in col:
+                    worksheet.set_column(col_num, col_num, 18, money_format)
+                else:
+                    worksheet.set_column(col_num, col_num, 22)
+            
+            worksheet.freeze_panes(2, 0)
         
-        # Fully Matched
-        if not results["fully_matched"].empty:
-            cols = {
-                "GSTIN_2B": "GSTIN",
-                "Trade_Name_2B": "Supplier Name",
-                "Invoice_No_2B": "Invoice Number",
-                "Invoice_Date_2B": "Invoice Date",
-                "Taxable_Value_2B": "Taxable Value",
-                "TOTAL_TAX_2B": "ITC Amount"
-            }
-            write_formatted_sheet(results["fully_matched"], "✅ Fully Matched", cols)
-        
-        # Missing in Books
-        if not results["missing_in_books"].empty:
-            cols = {
-                "GSTIN": "GSTIN",
-                "Trade_Name": "Supplier Name",
-                "Invoice_No": "Invoice Number",
-                "Invoice_Date": "Invoice Date",
-                "Taxable_Value": "Taxable Value",
-                "TOTAL_TAX": "ITC Amount"
-            }
-            write_formatted_sheet(results["missing_in_books"], "📕 Missing in Books", cols)
-        
-        # Missing in 2B
+        # ===== 4. MISSING IN 2B SHEET =====
         if not results["missing_in_2b"].empty:
-            cols = {
-                "GSTIN": "GSTIN",
-                "Trade_Name": "Supplier Name",
-                "Invoice_No": "Invoice Number",
-                "Invoice_Date": "Invoice Date",
-                "Taxable_Value": "Taxable Value",
-                "TOTAL_TAX": "ITC Amount"
-            }
-            write_formatted_sheet(results["missing_in_2b"], "📗 Missing in GSTR-2B", cols)
+            missing_2b_sheet = workbook.add_worksheet("Missing in 2B")
+            
+            missing_2b = results["missing_in_2b"][["Trade_Name", "GSTIN", "Invoice_No", "Taxable_Value", "TOTAL_TAX"]].copy()
+            missing_2b = missing_2b.sort_values("Trade_Name")
+            
+            missing_2b.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "ITC Amount"]
+            
+            missing_2b.to_excel(writer, sheet_name="Missing in 2B", index=False, startrow=1)
+            
+            # Format
+            worksheet = writer.sheets["Missing in 2B"]
+            worksheet.write(0, 0, "Missing in 2B (In Books but not in GSTR-2B)", title_format)
+            
+            for col_num, col in enumerate(missing_2b.columns):
+                worksheet.write(1, col_num, col, header_format)
+                if "Value" in col or "ITC" in col:
+                    worksheet.set_column(col_num, col_num, 18, money_format)
+                else:
+                    worksheet.set_column(col_num, col_num, 22)
+            
+            worksheet.freeze_panes(2, 0)
+            
+            # Add totals
+            last_row = len(missing_2b) + 2
+            worksheet.write(last_row, 3, "Total ITC Impact:", text_format)
+            worksheet.write(last_row, 4, missing_2b["ITC Amount"].sum(), money_format)
         
-        # Value Mismatch
-        if not results["value_mismatch"].empty:
-            cols = {
-                "GSTIN_2B": "GSTIN",
-                "Trade_Name_2B": "Supplier Name",
-                "Invoice_No_2B": "Invoice Number",
-                "Invoice_Date_2B": "Invoice Date",
-                "Taxable_Value_2B": "Value (2B)",
-                "Taxable_Value_Tally": "Value (Books)",
-                "VALUE_DIFFERENCE": "Difference"
-            }
-            write_formatted_sheet(results["value_mismatch"], "💰 Value Mismatch", cols)
+        # ===== 5. MISSING IN BOOKS SHEET =====
+        if not results["missing_in_books"].empty:
+            missing_books_sheet = workbook.add_worksheet("Missing in Books")
+            
+            missing_books = results["missing_in_books"][["Trade_Name", "GSTIN", "Invoice_No", "Taxable_Value", "TOTAL_TAX"]].copy()
+            missing_books = missing_books.sort_values("Trade_Name")
+            
+            missing_books.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "ITC Amount"]
+            
+            missing_books.to_excel(writer, sheet_name="Missing in Books", index=False, startrow=1)
+            
+            # Format
+            worksheet = writer.sheets["Missing in Books"]
+            worksheet.write(0, 0, "Missing in Books (In GSTR-2B but not in Books)", title_format)
+            
+            for col_num, col in enumerate(missing_books.columns):
+                worksheet.write(1, col_num, col, header_format)
+                if "Value" in col or "ITC" in col:
+                    worksheet.set_column(col_num, col_num, 18, money_format)
+                else:
+                    worksheet.set_column(col_num, col_num, 22)
+            
+            worksheet.freeze_panes(2, 0)
+            
+            # Add totals
+            last_row = len(missing_books) + 2
+            worksheet.write(last_row, 3, "Total ITC Impact:", text_format)
+            worksheet.write(last_row, 4, missing_books["ITC Amount"].sum(), money_format)
         
-        # Tax Mismatch
-        if not results["tax_mismatch"].empty:
-            cols = {
-                "GSTIN_2B": "GSTIN",
-                "Trade_Name_2B": "Supplier Name",
-                "Invoice_No_2B": "Invoice Number",
-                "Invoice_Date_2B": "Invoice Date",
-                "TOTAL_TAX_2B": "ITC (2B)",
-                "TOTAL_TAX_Tally": "ITC (Books)",
-                "TAX_DIFFERENCE": "Difference"
-            }
-            write_formatted_sheet(results["tax_mismatch"], "🧾 Tax Mismatch", cols)
+        # ===== 6. SUPPLIER ANALYSIS SHEET =====
+        if supplier_data:
+            analysis_sheet = workbook.add_worksheet("Supplier Analysis")
+            
+            supplier_df = pd.DataFrame(supplier_data)
+            
+            # Pivot Table 1: Supplier-wise ITC
+            pivot1 = supplier_df[["Supplier Name", "GSTIN", "ITC - Books", "ITC - GSTR-2B", "Difference", "Missing in 2B (ITC)"]].copy()
+            pivot1 = pivot1.sort_values("Difference", ascending=False)
+            
+            pivot1.to_excel(writer, sheet_name="Supplier Analysis", index=False, startrow=1)
+            
+            # Format
+            worksheet = writer.sheets["Supplier Analysis"]
+            worksheet.write(0, 0, "Supplier-wise ITC Analysis", title_format)
+            
+            for col_num, col in enumerate(pivot1.columns):
+                worksheet.write(1, col_num, col, header_format)
+                if "ITC" in col or "Difference" in col:
+                    worksheet.set_column(col_num, col_num, 18, money_format)
+                else:
+                    worksheet.set_column(col_num, col_num, 22)
+            
+            # Pivot Table 2: Count Analysis (starting at row len(pivot1)+5)
+            start_row = len(pivot1) + 5
+            
+            worksheet.write(start_row, 0, "Supplier-wise Invoice Count Analysis", title_format)
+            
+            pivot2 = supplier_df[["Supplier Name", "GSTIN", "Total Invoices", "Missing in 2B", "Missing in Books"]].copy()
+            pivot2 = pivot2.sort_values("Total Invoices", ascending=False)
+            
+            for col_num, col in enumerate(pivot2.columns):
+                worksheet.write(start_row + 1, col_num, col, header_format)
+            
+            for i, (_, row) in enumerate(pivot2.iterrows()):
+                for col_num, col in enumerate(pivot2.columns):
+                    worksheet.write(start_row + 2 + i, col_num, row[col], text_format)
+            
+            # Conditional Formatting
+            worksheet.conditional_format(f'D{start_row + 2}:E{start_row + 2 + len(pivot2)}', {
+                'type': 'cell',
+                'criteria': '>',
+                'value': 0,
+                'format': workbook.add_format({'font_name': 'Aptos Narrow', 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+            })
+            
+            worksheet.freeze_panes(2, 0)
         
-        # NO ITC
+        # ===== 7. NO ITC SHEET =====
         if not results["no_itc"].empty:
-            cols = {
-                "GSTIN": "GSTIN",
-                "Trade_Name": "Supplier Name",
-                "Invoice_No": "Invoice Number",
-                "Invoice_Date": "Invoice Date",
-                "Taxable_Value": "Taxable Value",
-                "Invoice_Value": "Invoice Value"
-            }
-            write_formatted_sheet(results["no_itc"], "🟡 NO ITC Invoices", cols)
-        
-        # Invalid GSTIN
-        if not results["invalid_gstin"].empty:
-            cols = {
-                "GSTIN": "GSTIN",
-                "Trade_Name": "Supplier Name",
-                "Invoice_No": "Invoice Number",
-                "Invoice_Date": "Invoice Date",
-                "Taxable_Value": "Taxable Value",
-                "Invoice_Value": "Invoice Value",
-                "TOTAL_TAX": "ITC Amount"
-            }
-            write_formatted_sheet(results["invalid_gstin"], "⚠️ Invalid GSTIN", cols)
+            no_itc_sheet = workbook.add_worksheet("NO ITC")
+            
+            no_itc = results["no_itc"][["Trade_Name", "GSTIN", "Invoice_No", "Taxable_Value", "Invoice_Value"]].copy()
+            no_itc.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "Invoice Value"]
+            
+            no_itc.to_excel(writer, sheet_name="NO ITC", index=False, startrow=1)
+            
+            # Format
+            worksheet = writer.sheets["NO ITC"]
+            worksheet.write(0, 0, "Zero ITC Invoices", title_format)
+            
+            for col_num, col in enumerate(no_itc.columns):
+                worksheet.write(1, col_num, col, header_format)
+                if "Value" in col:
+                    worksheet.set_column(col_num, col_num, 18, money_format)
+                else:
+                    worksheet.set_column(col_num, col_num, 22)
+            
+            worksheet.freeze_panes(2, 0)
     
     output.seek(0)
     
