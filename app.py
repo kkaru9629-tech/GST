@@ -26,10 +26,16 @@ if st.button("🚀 Run Reconciliation", use_container_width=True):
             tally_raw = pd.read_csv(tally_file) if tally_file.name.endswith("csv") else pd.read_excel(tally_file)
             gstr2b_raw = pd.read_csv(gstr2b_file) if gstr2b_file.name.endswith("csv") else pd.read_excel(gstr2b_file)
 
-            tally_clean = parse_tally(tally_raw)
+            # UPDATED RETURN STRUCTURE
+            tally_clean, no_itc_df, invalid_gstin_df = parse_tally(tally_raw)
             gstr2b_clean = parse_gstr2b(gstr2b_raw)
 
             results = reconcile(gstr2b_clean, tally_clean)
+
+            # Store extra data
+            results["no_itc"] = no_itc_df
+            results["invalid_gstin"] = invalid_gstin_df
+
             st.session_state["results"] = results
             st.success("Reconciliation Completed Successfully.")
 
@@ -44,6 +50,24 @@ if "results" in st.session_state:
     results = st.session_state["results"]
     summary = results["summary"]
 
+    # ================= INVALID GSTIN SECTION ================= #
+
+    if not results["invalid_gstin"].empty:
+        st.warning(f"⚠ {len(results['invalid_gstin'])} invoices skipped due to invalid GSTIN.")
+
+        with st.expander("View Invalid GSTIN Invoices"):
+            st.dataframe(results["invalid_gstin"], use_container_width=True)
+
+            csv_invalid = results["invalid_gstin"].to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download Invalid GSTIN Invoices",
+                csv_invalid,
+                "Invalid_GSTIN_Invoices.csv",
+                "text/csv"
+            )
+
+    # ================= SUMMARY ================= #
+
     st.markdown("## 📌 Summary Overview")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -55,21 +79,23 @@ if "results" in st.session_state:
 
     st.divider()
 
-    # Updated tabs: Fully Matched, Missing in Books, Missing in 2B
-    tab1, tab2, tab3 = st.tabs([
+    # ================= TABS ================= #
+
+    tab1, tab2, tab3, tab4 = st.tabs([
         "✅ Fully Matched",
         "📕 Missing in Books",
-        "📗 Missing in GSTR-2B"
+        "📗 Missing in GSTR-2B",
+        "🟡 NO ITC Invoices"
     ])
 
+    # ===== TAB 1 =====
     with tab1:
         if not results["fully_matched"].empty:
-            display = results["fully_matched"][[
-                "GSTIN_2B", "Trade_Name_2B",
-                "Invoice_No_2B",
-                "Taxable_Value_2B",
-                "TOTAL_TAX_2B"
-            ]].rename(columns={
+            display = results["fully_matched"][
+                ["GSTIN_2B", "Trade_Name_2B",
+                 "Invoice_No_2B", "Taxable_Value_2B",
+                 "TOTAL_TAX_2B"]
+            ].rename(columns={
                 "GSTIN_2B": "GSTIN",
                 "Trade_Name_2B": "Supplier Name",
                 "Invoice_No_2B": "Invoice Number",
@@ -80,329 +106,90 @@ if "results" in st.session_state:
         else:
             st.info("No fully matched invoices.")
 
+    # ===== TAB 2 =====
     with tab2:
         if not results["missing_in_books"].empty:
-            display = results["missing_in_books"][[
-                "GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date",
-                "Taxable_Value", "TOTAL_TAX"
-            ]].rename(columns={
-                "Trade_Name": "Supplier Name",
-                "Invoice_No": "Invoice Number",
-                "Invoice_Date": "Invoice Date",
-                "Taxable_Value": "Taxable Value",
-                "TOTAL_TAX": "ITC Amount"
+            display = results["missing_in_books"][
+                ["GSTIN","Trade_Name","Invoice_No","Invoice_Date",
+                 "Taxable_Value","TOTAL_TAX"]
+            ].rename(columns={
+                "Trade_Name":"Supplier Name",
+                "Invoice_No":"Invoice Number",
+                "Invoice_Date":"Invoice Date",
+                "Taxable_Value":"Taxable Value",
+                "TOTAL_TAX":"ITC Amount"
             })
-            # Format date for display
+
             display["Invoice Date"] = pd.to_datetime(display["Invoice Date"]).dt.date
             st.dataframe(display, use_container_width=True)
         else:
             st.success("No invoices missing in Books.")
 
+    # ===== TAB 3 =====
     with tab3:
         if not results["missing_in_2b"].empty:
-            display = results["missing_in_2b"][[
-                "GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date",
-                "Taxable_Value", "TOTAL_TAX"
-            ]].rename(columns={
-                "Trade_Name": "Supplier Name",
-                "Invoice_No": "Invoice Number",
-                "Invoice_Date": "Invoice Date",
-                "Taxable_Value": "Taxable Value",
-                "TOTAL_TAX": "ITC Amount"
+            display = results["missing_in_2b"][
+                ["GSTIN","Trade_Name","Invoice_No","Invoice_Date",
+                 "Taxable_Value","TOTAL_TAX"]
+            ].rename(columns={
+                "Trade_Name":"Supplier Name",
+                "Invoice_No":"Invoice Number",
+                "Invoice_Date":"Invoice Date",
+                "Taxable_Value":"Taxable Value",
+                "TOTAL_TAX":"ITC Amount"
             })
-            # Format date for display
+
             display["Invoice Date"] = pd.to_datetime(display["Invoice Date"]).dt.date
             st.dataframe(display, use_container_width=True)
         else:
             st.success("No invoices missing in GSTR-2B.")
 
-    # ================= ENHANCED EXCEL REPORT ================= #
+    # ===== TAB 4 - NO ITC =====
+    with tab4:
+        if not results["no_itc"].empty:
+
+            col1, col2, col3 = st.columns(3)
+
+            col1.metric("Total Invoices", len(results["no_itc"]))
+            col2.metric("Total Taxable Value",
+                        f"₹{results['no_itc']['Taxable_Value'].sum():,.2f}")
+            col3.metric("Total Invoice Value",
+                        f"₹{results['no_itc']['Invoice_Value'].sum():,.2f}")
+
+            display_no_itc = results["no_itc"][
+                ["GSTIN","Trade_Name","Invoice_No","Invoice_Date",
+                 "Taxable_Value","Invoice_Value"]
+            ]
+
+            display_no_itc["Invoice_Date"] = pd.to_datetime(display_no_itc["Invoice_Date"]).dt.date
+
+            st.dataframe(display_no_itc, use_container_width=True)
+
+        else:
+            st.success("No Zero ITC invoices found.")
+
+    # ================= DOWNLOAD EXCEL ================= #
 
     output = io.BytesIO()
-
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        workbook = writer.book
-        
-        # === FONT CONFIGURATION ===
-        try:
-            workbook.add_format({'font_name': 'Aptos Narrow'})
-            font_name = 'Aptos Narrow'
-        except:
-            font_name = 'Calibri'
-        
-        # === FORMATS ===
-        # Header format for Summary sheet (NO BORDERS as requested)
-        summary_header = workbook.add_format({
-            "bold": True,
-            "font_name": font_name,
-            "font_size": 11,
-            "bg_color": "#4472C4",
-            "font_color": "white",
-            "border": 0,
-            "align": "center",
-            "valign": "vcenter"
-        })
-        
-        # Regular header format (no borders) for other sheets
-        regular_header = workbook.add_format({
-            "bold": True,
-            "font_name": font_name,
-            "font_size": 11,
-            "bg_color": "#D3D3D3",
-            "font_color": "black",
-            "border": 0,
-            "align": "center",
-            "valign": "vcenter"
-        })
-        
-        # Money format (no borders)
-        money_format = workbook.add_format({
-            "num_format": "₹#,##0.00",
-            "font_name": font_name,
-            "font_size": 11,
-            "border": 0
-        })
-        
-        # Integer format (no borders)
-        integer_format = workbook.add_format({
-            "num_format": "#,##0",
-            "font_name": font_name,
-            "font_size": 11,
-            "border": 0
-        })
-        
-        # Date format - ONLY DATE, no time (no borders)
-        date_format = workbook.add_format({
-            "num_format": "dd-mm-yyyy",
-            "font_name": font_name,
-            "font_size": 11,
-            "border": 0,
-            "align": "left"
-        })
-        
-        # Text format (no borders)
-        text_format = workbook.add_format({
-            "font_name": font_name,
-            "font_size": 11,
-            "border": 0
-        })
-        
-        def write_sheet(df, name, columns_to_show=None, is_summary=False):
-            """Write dataframe with clean column selection - NO HEADER DUPLICATION"""
-            if df.empty:
-                empty_df = pd.DataFrame({"Message": ["No records found"]})
-                empty_df.to_excel(writer, sheet_name=name[:31], index=False, header=True, startrow=0)
-                worksheet = writer.sheets[name[:31]]
-                worksheet.set_column(0, 0, 30, text_format)
-                return
-                
-            # Select only relevant columns if specified
-            if columns_to_show:
-                display_df = df[columns_to_show].copy()
-            else:
-                display_df = df.copy()
-                
-            # Convert date columns to proper datetime and then to date only
-            date_columns = [col for col in display_df.columns if 'Date' in col or 'date' in col]
-            for col in date_columns:
-                if col in display_df.columns:
-                    display_df[col] = pd.to_datetime(display_df[col], errors='coerce').dt.date
-            
-            # Write to Excel with headers
-            display_df.to_excel(writer, sheet_name=name[:31], index=False, header=True, startrow=0)
-            worksheet = writer.sheets[name[:31]]
-            
-            # Format headers
-            for col_num, column in enumerate(display_df.columns):
-                worksheet.write(0, col_num, column, summary_header if is_summary else regular_header)
-            
-            # Apply formatting to data rows
-            for col_num, column in enumerate(display_df.columns):
-                if not display_df[column].isna().all():
-                    max_len = max(
-                        display_df[column].astype(str).map(len).max(),
-                        len(column)
-                    ) + 2
-                else:
-                    max_len = len(column) + 2
-                max_len = min(max_len, 50)
-                
-                if 'Date' in column or 'date' in column:
-                    worksheet.set_column(col_num, col_num, max_len, date_format)
-                elif any(x in column.lower() for x in ['value', 'tax', 'itc', 'amount', 'diff', 'difference']):
-                    worksheet.set_column(col_num, col_num, max_len, money_format)
-                elif any(x in column.lower() for x in ['count', 'invoices', 'matched']):
-                    worksheet.set_column(col_num, col_num, max_len, integer_format)
-                else:
-                    worksheet.set_column(col_num, col_num, max_len, text_format)
-        
-        # ===== SHEET 1: EXECUTIVE SUMMARY (NO BORDERS) ===== #
-        summary_data = {
-            "Particulars": [
-                "📊 RECONCILIATION SUMMARY",
-                "══════════════════════════",
-                "",
-                "📋 INVOICE COUNT SUMMARY:",
-                "   Total Invoices in GSTR-2B",
-                "   Total Invoices in Books",
-                "   ✅ Fully Matched Invoices",
-                "   ❌ Missing in Books",
-                "   ❌ Missing in GSTR-2B",
-                "   ⚠️ Value Mismatch",
-                "   ⚠️ Tax Mismatch",
-                "",
-                "💰 ITC AMOUNT SUMMARY:",
-                "   ITC as per GSTR-2B",
-                "   ITC as per Books",
-                "   ITC Difference",
-                "══════════════════════════",
-                "📈 Match Percentage"
-            ],
-            "Count/Amount": [
-                "",
-                "",
-                "",
-                "",
-                f"{summary['Total_Invoices_2B']:,.0f}",
-                f"{summary['Total_Invoices_Books']:,.0f}",
-                f"{summary['Total_Matched']:,.0f}",
-                f"{summary['Total_Missing_Books']:,.0f}",
-                f"{summary['Total_Missing_2B']:,.0f}",
-                f"{len(results['value_mismatch']):,.0f}",
-                f"{len(results['tax_mismatch']):,.0f}",
-                "",
-                "",
-                f"₹{summary['Total_ITC_2B']:,.2f}",
-                f"₹{summary['Total_ITC_Books']:,.2f}",
-                f"₹{summary['ITC_Difference']:,.2f}",
-                "",
-                f"{summary['Match_Percentage']}%"
-            ],
-            "Status": [
-                "",
-                "",
-                "",
-                "",
-                "✓",
-                "✓",
-                "✅",
-                "❌",
-                "❌",
-                "⚠️",
-                "⚠️",
-                "",
-                "",
-                "📌",
-                "📌",
-                "⚠️",
-                "",
-                "🎯"
-            ]
-        }
-        
-        summary_df = pd.DataFrame(summary_data)
-        summary_df.to_excel(writer, sheet_name="Executive Summary", index=False, header=False, startrow=0)
-        summary_sheet = writer.sheets["Executive Summary"]
-        
-        no_border_format = workbook.add_format({
-            "font_name": font_name,
-            "font_size": 11,
-            "border": 0,
-            "valign": "vcenter"
-        })
-        
-        summary_sheet.set_column("A:A", 35, no_border_format)
-        summary_sheet.set_column("B:B", 20, no_border_format)
-        summary_sheet.set_column("C:C", 10, no_border_format)
-        
-        # ===== SHEET 2: FULLY MATCHED ===== #
+
         if not results["fully_matched"].empty:
-            simple_matched = results["fully_matched"][[
-                "GSTIN_2B", 
-                "Trade_Name_2B",
-                "Invoice_No_2B",
-                "Invoice_Date_2B",
-                "Taxable_Value_2B",
-                "TOTAL_TAX_2B"
-            ]].rename(columns={
-                "GSTIN_2B": "GSTIN",
-                "Trade_Name_2B": "Supplier Name",
-                "Invoice_No_2B": "Invoice Number",
-                "Invoice_Date_2B": "Invoice Date",
-                "Taxable_Value_2B": "Taxable Value",
-                "TOTAL_TAX_2B": "ITC Amount"
-            })
-            write_sheet(simple_matched, "✅ Fully Matched")
-        
-        # ===== SHEET 3: MISSING IN BOOKS ===== #
+            results["fully_matched"].to_excel(writer, sheet_name="Fully Matched", index=False)
+
         if not results["missing_in_books"].empty:
-            missing_books_simple = results["missing_in_books"][[
-                "GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date",
-                "Taxable_Value", "TOTAL_TAX"
-            ]].rename(columns={
-                "Trade_Name": "Supplier Name",
-                "Invoice_No": "Invoice Number",
-                "Invoice_Date": "Invoice Date",
-                "Taxable_Value": "Taxable Value",
-                "TOTAL_TAX": "ITC Amount"
-            })
-            write_sheet(missing_books_simple, "❌ Missing in Books")
-        
-        # ===== SHEET 4: MISSING IN GSTR-2B ===== #
+            results["missing_in_books"].to_excel(writer, sheet_name="Missing in Books", index=False)
+
         if not results["missing_in_2b"].empty:
-            missing_2b_simple = results["missing_in_2b"][[
-                "GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date",
-                "Taxable_Value", "TOTAL_TAX"
-            ]].rename(columns={
-                "Trade_Name": "Supplier Name",
-                "Invoice_No": "Invoice Number",
-                "Invoice_Date": "Invoice Date",
-                "Taxable_Value": "Taxable Value",
-                "TOTAL_TAX": "ITC Amount"
-            })
-            write_sheet(missing_2b_simple, "❌ Missing in GSTR-2B")
-        
-        # ===== SHEET 5: VALUE MISMATCH ===== #
+            results["missing_in_2b"].to_excel(writer, sheet_name="Missing in 2B", index=False)
+
         if not results["value_mismatch"].empty:
-            value_mismatch_simple = results["value_mismatch"][[
-                "GSTIN_2B",
-                "Trade_Name_2B",
-                "Invoice_No_2B",
-                "Invoice_Date_2B",
-                "Taxable_Value_2B",
-                "Taxable_Value_Tally",
-                "VALUE_DIFFERENCE"
-            ]].rename(columns={
-                "GSTIN_2B": "GSTIN",
-                "Trade_Name_2B": "Supplier Name",
-                "Invoice_No_2B": "Invoice Number",
-                "Invoice_Date_2B": "Invoice Date",
-                "Taxable_Value_2B": "Value as per GSTR-2B",
-                "Taxable_Value_Tally": "Value as per Books",
-                "VALUE_DIFFERENCE": "Difference"
-            })
-            write_sheet(value_mismatch_simple, "⚠️ Value Mismatch")
-        
-        # ===== SHEET 6: TAX MISMATCH ===== #
+            results["value_mismatch"].to_excel(writer, sheet_name="Value Mismatch", index=False)
+
         if not results["tax_mismatch"].empty:
-            tax_mismatch_simple = results["tax_mismatch"][[
-                "GSTIN_2B",
-                "Trade_Name_2B",
-                "Invoice_No_2B",
-                "Invoice_Date_2B",
-                "TOTAL_TAX_2B",
-                "TOTAL_TAX_Tally",
-                "TAX_DIFFERENCE"
-            ]].rename(columns={
-                "GSTIN_2B": "GSTIN",
-                "Trade_Name_2B": "Supplier Name",
-                "Invoice_No_2B": "Invoice Number",
-                "Invoice_Date_2B": "Invoice Date",
-                "TOTAL_TAX_2B": "ITC as per GSTR-2B",
-                "TOTAL_TAX_Tally": "ITC as per Books",
-                "TAX_DIFFERENCE": "ITC Difference"
-            })
-            write_sheet(tax_mismatch_simple, "⚠️ Tax Mismatch")
+            results["tax_mismatch"].to_excel(writer, sheet_name="Tax Mismatch", index=False)
+
+        if not results["no_itc"].empty:
+            results["no_itc"].to_excel(writer, sheet_name="NO ITC Invoices", index=False)
 
     output.seek(0)
 
