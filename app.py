@@ -45,8 +45,7 @@ if "results" in st.session_state:
     results = st.session_state["results"]
     summary = results["summary"]
 
-    # ===== SUMMARY (UNCHANGED) ===== #
-
+    # ===== SUMMARY (UNCHANGED STRUCTURE) =====
     st.markdown("## 📊 Executive Summary")
 
     c1, c2, c3 = st.columns(3)
@@ -63,11 +62,11 @@ if "results" in st.session_state:
 
     st.divider()
 
-    c7, c8 = st.columns(2)
-    c7.metric("Invoices Missing in Books", summary["Total_Missing_Books"])
-    c8.metric("Invoices Missing in GSTR-2B", summary["Total_Missing_2B"])
-
-    st.divider()
+    # Helper function for formatting
+    def format_currency(df, columns):
+        for col in columns:
+            df[col] = df[col].apply(lambda x: f"₹{x:,.2f}")
+        return df
 
     # ================= TABS ================= #
 
@@ -81,7 +80,7 @@ if "results" in st.session_state:
         "📊 Supplier Analysis"
     ])
 
-    # ===== FULLY MATCHED =====
+    # FULLY MATCHED
     with tab1:
         if not results["fully_matched"].empty:
             df = results["fully_matched"][[
@@ -100,11 +99,11 @@ if "results" in st.session_state:
                 "TOTAL_TAX_2B":"ITC Amount"
             })
 
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.success("No fully matched invoices.")
+            df = format_currency(df, ["Taxable Value", "ITC Amount"])
 
-    # ===== MISSING IN BOOKS =====
+            st.dataframe(df, use_container_width=True)
+
+    # MISSING IN BOOKS
     with tab2:
         if not results["missing_in_books"].empty:
             df = results["missing_in_books"][[
@@ -122,11 +121,11 @@ if "results" in st.session_state:
                 "TOTAL_TAX":"ITC Amount"
             })
 
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.success("No invoices missing in Books.")
+            df = format_currency(df, ["Taxable Value", "ITC Amount"])
 
-    # ===== MISSING IN 2B =====
+            st.dataframe(df, use_container_width=True)
+
+    # MISSING IN 2B
     with tab3:
         if not results["missing_in_2b"].empty:
             df = results["missing_in_2b"][[
@@ -144,11 +143,11 @@ if "results" in st.session_state:
                 "TOTAL_TAX":"ITC Amount"
             })
 
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.success("No invoices missing in GSTR-2B.")
+            df = format_currency(df, ["Taxable Value", "ITC Amount"])
 
-    # ===== VALUE MISMATCH =====
+            st.dataframe(df, use_container_width=True)
+
+    # VALUE MISMATCH
     with tab4:
         if not results["value_mismatch"].empty:
             df = results["value_mismatch"][[
@@ -169,11 +168,15 @@ if "results" in st.session_state:
                 "VALUE_DIFFERENCE":"Value Difference"
             })
 
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.success("No value mismatches found.")
+            df = format_currency(df, [
+                "Value as per GSTR-2B",
+                "Value as per Books",
+                "Value Difference"
+            ])
 
-    # ===== TAX MISMATCH =====
+            st.dataframe(df, use_container_width=True)
+
+    # TAX MISMATCH
     with tab5:
         if not results["tax_mismatch"].empty:
             df = results["tax_mismatch"][[
@@ -194,11 +197,15 @@ if "results" in st.session_state:
                 "TAX_DIFFERENCE":"ITC Difference"
             })
 
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.success("No tax mismatches found.")
+            df = format_currency(df, [
+                "ITC as per GSTR-2B",
+                "ITC as per Books",
+                "ITC Difference"
+            ])
 
-    # ===== NO ITC =====
+            st.dataframe(df, use_container_width=True)
+
+    # NO ITC
     with tab6:
         if not results["no_itc"].empty:
             df = results["no_itc"][[
@@ -214,40 +221,36 @@ if "results" in st.session_state:
                 "Invoice_Date":"Invoice Date"
             })
 
+            df = format_currency(df, ["Taxable Value", "Invoice Value"])
+
             st.dataframe(df, use_container_width=True)
-        else:
-            st.success("No Zero ITC invoices found.")
 
-    # ===== SUPPLIER ANALYSIS =====
-    with tab7:
+    # ================= DOWNLOAD EXCEL ================= #
 
-        combined = results["fully_matched"].copy()
+    st.divider()
 
-        if not results["value_mismatch"].empty:
-            combined = pd.concat([combined, results["value_mismatch"]])
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        pd.DataFrame([summary]).to_excel(writer, sheet_name="Summary", index=False)
 
-        if not results["tax_mismatch"].empty:
-            combined = pd.concat([combined, results["tax_mismatch"]])
+        for key, name in [
+            ("fully_matched", "Fully Matched"),
+            ("missing_in_books", "Missing in Books"),
+            ("missing_in_2b", "Missing in 2B"),
+            ("value_mismatch", "Value Mismatch"),
+            ("tax_mismatch", "Tax Mismatch"),
+            ("no_itc", "NO ITC Invoices"),
+            ("invalid_gstin", "Invalid GSTIN")
+        ]:
+            if key in results and not results[key].empty:
+                results[key].to_excel(writer, sheet_name=name, index=False)
 
-        if not combined.empty:
+    output.seek(0)
 
-            combined["Supplier"] = combined["Trade_Name_2B"]
-
-            pivot = combined.groupby("Supplier").agg(
-                Total_Invoices=("Invoice_No_2B", "count"),
-                ITC_2B=("TOTAL_TAX_2B", "sum"),
-                ITC_Books=("TOTAL_TAX_Tally", "sum"),
-                Total_Value_Difference=("VALUE_DIFFERENCE", "sum"),
-                Total_Tax_Difference=("TAX_DIFFERENCE", "sum")
-            ).reset_index()
-
-            pivot["Absolute ITC Difference"] = (
-                abs(pivot["ITC_2B"] - pivot["ITC_Books"])
-            )
-
-            pivot = pivot.sort_values("Absolute ITC Difference", ascending=False)
-
-            st.dataframe(pivot, use_container_width=True)
-
-        else:
-            st.info("No supplier data available.")
+    st.download_button(
+        "⬇ Download Complete Excel Report",
+        data=output,
+        file_name=f"GST_Reconciliation_Report_{datetime.now().strftime('%d%m%Y')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
