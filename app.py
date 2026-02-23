@@ -4,10 +4,75 @@ import io
 from reconciliation_engine import parse_tally, parse_gstr2b, reconcile
 from datetime import datetime
 
-st.set_page_config(page_title="GST Reconciliation", layout="wide")
+st.set_page_config(page_title="GST Reconciliation", layout="wide", initial_sidebar_state="collapsed")
 
-st.title("📊 GST Reconciliation System")
-st.caption("ITC Books vs GSTR-2B Comparison")
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        color: #1E3A8A;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    .sub-header {
+        font-size: 1rem;
+        color: #6B7280;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background-color: #F9FAFB;
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        border-left: 4px solid #3B82F6;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .critical {
+        background-color: #FEF2F2;
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        color: #DC2626;
+        font-weight: 600;
+    }
+    .watch {
+        background-color: #FFFBEB;
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        color: #D97706;
+        font-weight: 600;
+    }
+    .good {
+        background-color: #F0FDF4;
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        color: #059669;
+        font-weight: 600;
+    }
+    .insight-box {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1.2rem;
+        border-radius: 0.75rem;
+        color: white;
+        margin-bottom: 1rem;
+    }
+    .stat-box {
+        background-color: white;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #E5E7EB;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .top-five {
+        background-color: #F3F4F6;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #8B5CF6;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<p class="main-header">📊 GST Reconciliation System</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">ITC Books vs GSTR-2B Comparison | Auto-fit Columns | Supplier Analysis</p>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
@@ -17,27 +82,28 @@ with col1:
 with col2:
     gstr2b_file = st.file_uploader("📗 Upload Structured GSTR-2B", type=["xlsx", "xls", "csv"])
 
-if st.button("🚀 Run Reconciliation", use_container_width=True):
+if st.button("🚀 Run Reconciliation", use_container_width=True, type="primary"):
     if tally_file is None or gstr2b_file is None:
         st.error("Please upload both files.")
     else:
         try:
-            tally_raw = pd.read_csv(tally_file) if tally_file.name.endswith("csv") else pd.read_excel(tally_file)
-            gstr2b_raw = pd.read_csv(gstr2b_file) if gstr2b_file.name.endswith("csv") else pd.read_excel(gstr2b_file)
+            with st.spinner("Processing... Please wait"):
+                tally_raw = pd.read_csv(tally_file) if tally_file.name.endswith("csv") else pd.read_excel(tally_file)
+                gstr2b_raw = pd.read_csv(gstr2b_file) if gstr2b_file.name.endswith("csv") else pd.read_excel(gstr2b_file)
 
-            tally_clean, no_itc_df, invalid_gstin_df = parse_tally(tally_raw)
-            gstr2b_clean = parse_gstr2b(gstr2b_raw)
+                tally_clean, no_itc_df, invalid_gstin_df = parse_tally(tally_raw)
+                gstr2b_clean = parse_gstr2b(gstr2b_raw)
 
-            results = reconcile(gstr2b_clean, tally_clean)
+                results = reconcile(gstr2b_clean, tally_clean)
 
-            results["no_itc"] = no_itc_df
-            results["invalid_gstin"] = invalid_gstin_df
+                results["no_itc"] = no_itc_df
+                results["invalid_gstin"] = invalid_gstin_df
 
-            st.session_state["results"] = results
-            st.success("Reconciliation Completed Successfully.")
+                st.session_state["results"] = results
+                st.success("✅ Reconciliation Completed Successfully!")
 
         except Exception as e:
-            st.error(str(e))
+            st.error(f"Error: {str(e)}")
 
 # ================= DISPLAY ================= #
 
@@ -45,35 +111,254 @@ if "results" in st.session_state:
     results = st.session_state["results"]
     summary = results["summary"]
 
-    # ================= SIMPLE SUMMARY ================= #
+    # ================= ENHANCED SUMMARY DASHBOARD ================= #
     
-    st.markdown("## 📌 Summary")
+    st.markdown("## 📊 Reconciliation Dashboard")
     
-    col1, col2, col3 = st.columns(3)
+    # Top Row - Key Metrics
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Total ITC - Books", f"₹{summary['Total_ITC_Books']:,.2f}")
-        st.metric("Missing in 2B (Books - 2B)", f"₹{summary['Total_Missing_2B_value']:,.2f}")
+        st.markdown('<div class="stat-box">', unsafe_allow_html=True)
+        st.metric("📘 ITC - Books", f"₹{summary['Total_ITC_Books']:,.2f}")
+        st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
-        st.metric("Total ITC - GSTR-2B", f"₹{summary['Total_ITC_2B']:,.2f}")
-        st.metric("Missing in Books (2B - Books)", f"₹{summary['Total_Missing_Books_value']:,.2f}")
+        st.markdown('<div class="stat-box">', unsafe_allow_html=True)
+        st.metric("📗 ITC - GSTR-2B", f"₹{summary['Total_ITC_2B']:,.2f}")
+        st.markdown('</div>', unsafe_allow_html=True)
     
     with col3:
-        st.metric("Net Difference", f"₹{summary['ITC_Difference']:,.2f}")
+        st.markdown('<div class="stat-box">', unsafe_allow_html=True)
+        diff_color = "inverse" if summary['ITC_Difference'] < 0 else "normal"
+        st.metric("📊 Net Difference", f"₹{summary['ITC_Difference']:,.2f}", delta_color=diff_color)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown('<div class="stat-box">', unsafe_allow_html=True)
+        match_percent = summary['Match_Percentage']
+        if match_percent >= 90:
+            st.metric("✅ Match %", f"{match_percent}%")
+        elif match_percent >= 75:
+            st.metric("⚠️ Match %", f"{match_percent}%")
+        else:
+            st.metric("🔴 Match %", f"{match_percent}%")
+        st.markdown('</div>', unsafe_allow_html=True)
     
     st.divider()
-
+    
+    # ================= PREPARE SUPPLIER DATA FOR INSIGHTS ================= #
+    
+    # Build supplier dictionary grouped by GSTIN
+    supplier_dict = {}
+    
+    # Process Missing in 2B (Books data)
+    if not results["missing_in_2b"].empty:
+        for _, row in results["missing_in_2b"].iterrows():
+            gstin = row["GSTIN"]
+            name = row["Trade_Name"]
+            
+            if gstin not in supplier_dict:
+                supplier_dict[gstin] = {
+                    "names": set(),
+                    "books_itc": 0,
+                    "gstr_itc": 0,
+                    "missing_2b_count": 0,
+                    "missing_2b_itc": 0,
+                    "missing_books_count": 0,
+                    "missing_books_itc": 0,
+                    "total_invoices": 0
+                }
+            
+            supplier_dict[gstin]["names"].add(name)
+            supplier_dict[gstin]["books_itc"] += row["TOTAL_TAX"]
+            supplier_dict[gstin]["missing_2b_count"] += 1
+            supplier_dict[gstin]["missing_2b_itc"] += row["TOTAL_TAX"]
+            supplier_dict[gstin]["total_invoices"] += 1
+    
+    # Process Missing in Books (GSTR-2B data)
+    if not results["missing_in_books"].empty:
+        for _, row in results["missing_in_books"].iterrows():
+            gstin = row["GSTIN"]
+            name = row["Trade_Name"]
+            
+            if gstin not in supplier_dict:
+                supplier_dict[gstin] = {
+                    "names": set(),
+                    "books_itc": 0,
+                    "gstr_itc": 0,
+                    "missing_2b_count": 0,
+                    "missing_2b_itc": 0,
+                    "missing_books_count": 0,
+                    "missing_books_itc": 0,
+                    "total_invoices": 0
+                }
+            
+            supplier_dict[gstin]["names"].add(name)
+            supplier_dict[gstin]["gstr_itc"] += row["TOTAL_TAX"]
+            supplier_dict[gstin]["missing_books_count"] += 1
+            supplier_dict[gstin]["missing_books_itc"] += row["TOTAL_TAX"]
+            supplier_dict[gstin]["total_invoices"] += 1
+    
+    # ================= TOP INSIGHTS SECTION ================= #
+    
+    st.markdown("## 🔍 Top Insights")
+    
+    if supplier_dict:
+        # Convert to list for analysis
+        supplier_list = []
+        for gstin, data in supplier_dict.items():
+            names_list = list(data["names"])
+            primary_name = max(names_list, key=len)  # Use longest name as primary
+            supplier_list.append({
+                "gstin": gstin,
+                "name": primary_name,
+                "books_itc": data["books_itc"],
+                "gstr_itc": data["gstr_itc"],
+                "difference": data["gstr_itc"] - data["books_itc"],
+                "missing_2b_itc": data["missing_2b_itc"],
+                "missing_books_itc": data["missing_books_itc"]
+            })
+        
+        supplier_df = pd.DataFrame(supplier_list)
+        
+        # Top 3 Insights Cards
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Highest Positive Difference
+            if not supplier_df.empty:
+                top_diff = supplier_df.nlargest(1, "difference").iloc[0]
+                st.markdown(f'''
+                <div class="insight-box">
+                    <h3 style="margin:0; font-size:1rem; opacity:0.9;">🏆 HIGHEST ITC DIFFERENCE</h3>
+                    <p style="margin:0.5rem 0; font-size:1.5rem; font-weight:700;">{top_diff['name']}</p>
+                    <p style="margin:0; font-size:1.2rem;">₹{top_diff['difference']:,.2f}</p>
+                    <p style="margin:0.5rem 0 0 0; font-size:0.9rem; opacity:0.8;">GSTIN: {top_diff['gstin']}</p>
+                </div>
+                ''', unsafe_allow_html=True)
+        
+        with col2:
+            # Highest ITC in Books
+            if not supplier_df.empty:
+                top_books = supplier_df.nlargest(1, "books_itc").iloc[0]
+                st.markdown(f'''
+                <div class="insight-box" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
+                    <h3 style="margin:0; font-size:1rem; opacity:0.9;">📈 HIGHEST ITC IN BOOKS</h3>
+                    <p style="margin:0.5rem 0; font-size:1.5rem; font-weight:700;">{top_books['name']}</p>
+                    <p style="margin:0; font-size:1.2rem;">₹{top_books['books_itc']:,.2f}</p>
+                    <p style="margin:0.5rem 0 0 0; font-size:0.9rem; opacity:0.8;">GSTIN: {top_books['gstin']}</p>
+                </div>
+                ''', unsafe_allow_html=True)
+        
+        with col3:
+            # Highest Missing in 2B
+            if not supplier_df.empty:
+                top_missing = supplier_df.nlargest(1, "missing_2b_itc").iloc[0]
+                st.markdown(f'''
+                <div class="insight-box" style="background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);">
+                    <h3 style="margin:0; font-size:1rem; opacity:0.9;">📊 HIGHEST MISSING IN 2B</h3>
+                    <p style="margin:0.5rem 0; font-size:1.5rem; font-weight:700;">{top_missing['name']}</p>
+                    <p style="margin:0; font-size:1.2rem;">₹{top_missing['missing_2b_itc']:,.2f}</p>
+                    <p style="margin:0.5rem 0 0 0; font-size:0.9rem; opacity:0.8;">GSTIN: {top_missing['gstin']}</p>
+                </div>
+                ''', unsafe_allow_html=True)
+        
+        st.divider()
+        
+        # ================= QUICK STATS DASHBOARD ================= #
+        
+        st.markdown("## 📌 Quick Stats")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # Calculate stats
+        total_suppliers = len(supplier_df)
+        critical_suppliers = len(supplier_df[abs(supplier_df["difference"]) > 100000])
+        watch_suppliers = len(supplier_df[(abs(supplier_df["difference"]) > 10000) & (abs(supplier_df["difference"]) <= 100000)])
+        healthy_suppliers = len(supplier_df[abs(supplier_df["difference"]) <= 10000])
+        total_itc_at_stake = supplier_df["missing_2b_itc"].sum() + supplier_df["missing_books_itc"].sum()
+        
+        with col1:
+            st.markdown(f'''
+            <div class="stat-box">
+                <p style="color:#6B7280; margin:0; font-size:0.9rem;">Total Suppliers</p>
+                <p style="font-size:2rem; font-weight:700; margin:0; color:#1F2937;">{total_suppliers}</p>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f'''
+            <div class="stat-box">
+                <p style="color:#6B7280; margin:0; font-size:0.9rem;">🔴 Critical</p>
+                <p style="font-size:2rem; font-weight:700; margin:0; color:#DC2626;">{critical_suppliers}</p>
+                <p style="color:#6B7280; margin:0; font-size:0.8rem;">Diff > ₹1L</p>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f'''
+            <div class="stat-box">
+                <p style="color:#6B7280; margin:0; font-size:0.9rem;">🟡 Watch</p>
+                <p style="font-size:2rem; font-weight:700; margin:0; color:#D97706;">{watch_suppliers}</p>
+                <p style="color:#6B7280; margin:0; font-size:0.8rem;">Diff > ₹10k</p>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f'''
+            <div class="stat-box">
+                <p style="color:#6B7280; margin:0; font-size:0.9rem;">🟢 Healthy</p>
+                <p style="font-size:2rem; font-weight:700; margin:0; color:#059669;">{healthy_suppliers}</p>
+                <p style="color:#6B7280; margin:0; font-size:0.8rem;">Diff < ₹10k</p>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        st.markdown(f'''
+        <div style="background-color:#F3F4F6; padding:1rem; border-radius:0.75rem; margin-top:1rem;">
+            <p style="font-size:1.2rem; margin:0; color:#374151;">💰 Total ITC at Stake: <strong>₹{total_itc_at_stake:,.2f}</strong></p>
+            <p style="color:#6B7280; margin:0.5rem 0 0 0; font-size:0.9rem;">⚠️ Suppliers needing immediate action: {critical_suppliers + watch_suppliers}</p>
+        </div>
+        ''', unsafe_allow_html=True)
+        
+        st.divider()
+        
+        # ================= TOP 5 LISTS ================= #
+        
+        st.markdown("## 🏆 Top 5 Lists")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown('<div class="top-five">', unsafe_allow_html=True)
+            st.markdown("### 🔥 Top 5 by ITC Difference")
+            top5_diff = supplier_df.nlargest(5, "difference")[["name", "difference"]].copy()
+            top5_diff["difference"] = top5_diff["difference"].apply(lambda x: f"₹{x:,.2f}")
+            top5_diff.columns = ["Supplier", "Difference"]
+            st.dataframe(top5_diff, use_container_width=True, hide_index=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown('<div class="top-five">', unsafe_allow_html=True)
+            st.markdown("### 📦 Top 5 by Missing ITC")
+            top5_missing = supplier_df.nlargest(5, "missing_2b_itc")[["name", "missing_2b_itc"]].copy()
+            top5_missing["missing_2b_itc"] = top5_missing["missing_2b_itc"].apply(lambda x: f"₹{x:,.2f}")
+            top5_missing.columns = ["Supplier", "Missing ITC"]
+            st.dataframe(top5_missing, use_container_width=True, hide_index=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.divider()
+    
     # ================= TABS ================= #
 
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "Books Data",
-        "GSTR-2B Data",
-        "Missing in 2B",
-        "Missing in Books",
-        "NO ITC Invoices",
-        "Invalid GSTIN",
-        "Supplier Analysis"
+        "📚 Books Data",
+        "📖 GSTR-2B Data",
+        "❌ Missing in 2B",
+        "📕 Missing in Books",
+        "🟡 NO ITC Invoices",
+        "⚠️ Invalid GSTIN",
+        "📊 Supplier Analysis"
     ])
 
     # ===== TAB 1: Books Data (NO DATES) =====
@@ -151,6 +436,10 @@ if "results" in st.session_state:
             display.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "ITC Amount"]
             
             st.dataframe(display, use_container_width=True, hide_index=True)
+            
+            # Total
+            total_itc = results["missing_in_2b"]["TOTAL_TAX"].sum()
+            st.markdown(f"**Total ITC Impact: ₹{total_itc:,.2f}**")
         else:
             st.success("No invoices missing in 2B.")
 
@@ -167,6 +456,10 @@ if "results" in st.session_state:
             display.columns = ["Supplier Name", "GSTIN", "Invoice No", "Taxable Value", "ITC Amount"]
             
             st.dataframe(display, use_container_width=True, hide_index=True)
+            
+            # Total
+            total_itc = results["missing_in_books"]["TOTAL_TAX"].sum()
+            st.markdown(f"**Total ITC Impact: ₹{total_itc:,.2f}**")
         else:
             st.success("No invoices missing in Books.")
 
@@ -202,98 +495,79 @@ if "results" in st.session_state:
         else:
             st.success("No invalid GSTIN invoices.")
 
-    # ===== TAB 7: Supplier Analysis =====
+    # ===== TAB 7: Supplier Analysis (Grouped by GSTIN with Name Variations) =====
     with tab7:
-        st.markdown("### 📊 Supplier-wise Analysis")
+        st.markdown("### 📊 Supplier-wise Analysis (Grouped by GSTIN)")
         
-        # Prepare data
-        supplier_data = []
-        
-        # Get all unique suppliers from missing_in_2b and missing_in_books
-        all_suppliers = set()
-        
-        if not results["missing_in_2b"].empty:
-            for _, row in results["missing_in_2b"].iterrows():
-                all_suppliers.add((row["GSTIN"], row["Trade_Name"]))
-        
-        if not results["missing_in_books"].empty:
-            for _, row in results["missing_in_books"].iterrows():
-                all_suppliers.add((row["GSTIN"], row["Trade_Name"]))
-        
-        # Build supplier analysis
-        for gstin, name in all_suppliers:
-            books_itc = 0.0
-            gstr_itc = 0.0
-            missing_2b_count = 0
-            missing_2b_itc = 0.0
-            missing_books_count = 0
-            missing_books_itc = 0.0
-            total_invoices = 0
+        if supplier_dict:
+            # Convert to DataFrame with all columns
+            supplier_rows = []
+            for gstin, data in supplier_dict.items():
+                names_list = list(data["names"])
+                # Sort names by length (longest first) for better primary name
+                names_list.sort(key=len, reverse=True)
+                primary_name = names_list[0]
+                other_names = ", ".join(names_list[1:]) if len(names_list) > 1 else "-"
+                
+                supplier_rows.append({
+                    "GSTIN": gstin,
+                    "Primary Name": primary_name,
+                    "Other Names": other_names,
+                    "ITC - Books": data["books_itc"],
+                    "ITC - GSTR-2B": data["gstr_itc"],
+                    "Difference": data["gstr_itc"] - data["books_itc"],
+                    "Missing in 2B (ITC)": data["missing_2b_itc"]
+                })
             
-            # Missing in 2B (in Books but not in 2B)
-            if not results["missing_in_2b"].empty:
-                mask = results["missing_in_2b"]["GSTIN"] == gstin
-                missing_2b_count = mask.sum()
-                if missing_2b_count > 0:
-                    missing_2b_itc = results["missing_in_2b"].loc[mask, "TOTAL_TAX"].sum()
-                    books_itc += missing_2b_itc
-                    total_invoices += missing_2b_count
+            supplier_df = pd.DataFrame(supplier_rows)
             
-            # Missing in Books (in 2B but not in Books)
-            if not results["missing_in_books"].empty:
-                mask = results["missing_in_books"]["GSTIN"] == gstin
-                missing_books_count = mask.sum()
-                if missing_books_count > 0:
-                    missing_books_itc = results["missing_in_books"].loc[mask, "TOTAL_TAX"].sum()
-                    gstr_itc += missing_books_itc
-                    total_invoices += missing_books_count
-            
-            supplier_data.append({
-                "Supplier Name": name,
-                "GSTIN": gstin,
-                "Total Invoices": total_invoices,
-                "ITC - Books": books_itc,
-                "ITC - GSTR-2B": gstr_itc,
-                "Difference": gstr_itc - books_itc,
-                "Missing in 2B": missing_2b_count,
-                "Missing in 2B (ITC)": missing_2b_itc,
-                "Missing in Books": missing_books_count,
-                "Missing in Books (ITC)": missing_books_itc
-            })
-        
-        if supplier_data:
-            supplier_df = pd.DataFrame(supplier_data)
-            
-            # Sort by absolute difference (using numeric values)
-            supplier_df_sorted = supplier_df.copy()
-            supplier_df_sorted["Abs_Difference"] = abs(supplier_df_sorted["Difference"])
-            supplier_df_sorted = supplier_df_sorted.sort_values("Abs_Difference", ascending=False)
+            # Sort by absolute difference
+            supplier_df["Abs_Difference"] = abs(supplier_df["Difference"])
+            supplier_df = supplier_df.sort_values("Abs_Difference", ascending=False)
             
             # Create display version with formatted currency
-            display_df = supplier_df_sorted.copy()
-            for col in ["ITC - Books", "ITC - GSTR-2B", "Difference", "Missing in 2B (ITC)", "Missing in Books (ITC)"]:
+            display_df = supplier_df.copy()
+            for col in ["ITC - Books", "ITC - GSTR-2B", "Difference", "Missing in 2B (ITC)"]:
                 display_df[col] = display_df[col].apply(lambda x: f"₹{x:,.2f}")
             
-            # Drop the temporary column
             display_df = display_df.drop("Abs_Difference", axis=1)
+            
+            # Add color coding based on difference
+            def color_diff(val):
+                if isinstance(val, str) and '₹' in val:
+                    num_val = float(val.replace('₹', '').replace(',', ''))
+                    if num_val > 100000:
+                        return '🔴 '
+                    elif num_val > 10000:
+                        return '🟡 '
+                    elif num_val < -100000:
+                        return '🔴 '
+                    elif num_val < -10000:
+                        return '🟡 '
+                return ''
+            
+            display_df["Difference"] = display_df["Difference"].apply(lambda x: color_diff(x) + x)
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
             
-            # High Risk Suppliers (Top 5 by absolute difference)
-            st.markdown("### ⚠️ High Risk Suppliers")
-            high_risk = display_df.head(5)[["Supplier Name", "GSTIN", "Difference", "Missing in 2B", "Missing in Books"]]
-            st.dataframe(high_risk, use_container_width=True, hide_index=True)
+            # Summary stats for this tab
+            st.markdown("---")
+            col1, col2, col3 = st.columns(3)
             
-            # High ITC Suppliers (Top 5 by ITC)
-            st.markdown("### 💰 High ITC Suppliers")
-            # Sort by ITC - Books (numeric)
-            high_itc_df = supplier_df.nlargest(5, "ITC - Books")[["Supplier Name", "GSTIN", "ITC - Books"]].copy()
-            high_itc_df["ITC - Books"] = high_itc_df["ITC - Books"].apply(lambda x: f"₹{x:,.2f}")
-            st.dataframe(high_itc_df, use_container_width=True, hide_index=True)
+            with col1:
+                pos_diff = supplier_df[supplier_df["Difference"] > 0]["Difference"].sum()
+                st.metric("📈 Net ITC in 2B", f"₹{pos_diff:,.2f}")
+            
+            with col2:
+                neg_diff = abs(supplier_df[supplier_df["Difference"] < 0]["Difference"].sum())
+                st.metric("📉 Net ITC in Books", f"₹{neg_diff:,.2f}")
+            
+            with col3:
+                st.metric("🏢 Total Suppliers", len(supplier_df))
         else:
             st.info("No supplier data available for analysis.")
 
-    # ================= DOWNLOAD EXCEL REPORT ================= #
+    # ================= DOWNLOAD EXCEL REPORT (WITH AUTO-FIT COLUMNS) ================= #
 
     st.divider()
     
@@ -301,7 +575,7 @@ if "results" in st.session_state:
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         workbook = writer.book
         
-        # Set default font to Aptos Narrow
+        # Set default font
         workbook.formats[0].set_font_name('Aptos Narrow')
         
         # Formats
@@ -309,7 +583,8 @@ if "results" in st.session_state:
             'bold': True,
             'font_size': 14,
             'font_name': 'Aptos Narrow',
-            'align': 'left'
+            'align': 'left',
+            'font_color': '#1E3A8A'
         })
         
         header_format = workbook.add_format({
@@ -317,60 +592,71 @@ if "results" in st.session_state:
             'font_name': 'Aptos Narrow',
             'bg_color': '#D9E1F2',
             'border': 1,
-            'align': 'center'
+            'align': 'center',
+            'valign': 'vcenter'
         })
         
         text_format = workbook.add_format({'font_name': 'Aptos Narrow'})
         money_format = workbook.add_format({'font_name': 'Aptos Narrow', 'num_format': '₹#,##0.00'})
         
-        # ===== 1. SUMMARY SHEET =====
-        summary_sheet = workbook.add_worksheet("Summary")
-        
-        summary_sheet.set_column('A:A', 35)
-        summary_sheet.set_column('B:B', 25)
-        summary_sheet.set_column('C:C', 15)
+        # ===== 1. DASHBOARD SHEET =====
+        dashboard_sheet = workbook.add_worksheet("Dashboard")
+        dashboard_sheet.set_column('A:A', 35)
+        dashboard_sheet.set_column('B:B', 20)
+        dashboard_sheet.set_column('C:C', 20)
+        dashboard_sheet.set_column('D:D', 20)
         
         # Title
-        summary_sheet.write('A1', 'GST RECONCILIATION SUMMARY', title_format)
+        dashboard_sheet.merge_range('A1:D1', 'GST RECONCILIATION DASHBOARD', title_format)
         
-        # Summary Table
-        headers = ['Particulars', 'Amount', 'Status']
-        summary_sheet.write_row('A3', headers, header_format)
-        
-        summary_rows = [
-            ['Total ITC as per Books', summary['Total_ITC_Books'], ''],
-            ['Total ITC as per GSTR-2B', summary['Total_ITC_2B'], ''],
-            ['Missing in 2B (Books - 2B)', summary['Total_Missing_2B_value'], '❌' if summary['Total_Missing_2B_value'] > 0 else '✓'],
-            ['Missing in Books (2B - Books)', summary['Total_Missing_Books_value'], '❌' if summary['Total_Missing_Books_value'] > 0 else '✓'],
-            ['Net Difference', summary['ITC_Difference'], '⚠️' if abs(summary['ITC_Difference']) > 1000 else '✓']
+        # Key Metrics
+        dashboard_sheet.write('A3', 'Key Metrics', title_format)
+        metrics = [
+            ['Total ITC - Books', summary['Total_ITC_Books']],
+            ['Total ITC - GSTR-2B', summary['Total_ITC_2B']],
+            ['Net Difference', summary['ITC_Difference']],
+            ['Match %', f"{summary['Match_Percentage']}%"]
         ]
         
-        row = 3
-        for i, (label, value, status) in enumerate(summary_rows):
-            summary_sheet.write(row, 0, label, text_format)
-            summary_sheet.write(row, 1, value, money_format)
-            summary_sheet.write(row, 2, status, text_format)
-            row += 1
+        for i, (label, value) in enumerate(metrics):
+            dashboard_sheet.write(i+4, 0, label, header_format)
+            if 'ITC' in label:
+                dashboard_sheet.write(i+4, 1, value, money_format)
+            else:
+                dashboard_sheet.write(i+4, 1, value, text_format)
         
-        # Conditional Formatting
-        summary_sheet.conditional_format(f'B4:B{row-1}', {
-            'type': 'cell',
-            'criteria': '>',
-            'value': 0,
-            'format': workbook.add_format({'font_name': 'Aptos Narrow', 'num_format': '₹#,##0.00', 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-        })
+        # Top Insights
+        if supplier_dict:
+            supplier_list = []
+            for gstin, data in supplier_dict.items():
+                names_list = list(data["names"])
+                primary_name = max(names_list, key=len)
+                supplier_list.append({
+                    "name": primary_name,
+                    "difference": data["gstr_itc"] - data["books_itc"],
+                    "missing_2b": data["missing_2b_itc"]
+                })
+            
+            insight_df = pd.DataFrame(supplier_list)
+            
+            if not insight_df.empty:
+                row_start = 10
+                dashboard_sheet.write(row_start, 0, 'Top Insights', title_format)
+                
+                # Highest Difference
+                top_diff = insight_df.nlargest(1, "difference").iloc[0]
+                dashboard_sheet.write(row_start+1, 0, '🏆 Highest ITC Difference:', header_format)
+                dashboard_sheet.write(row_start+1, 1, top_diff['name'], text_format)
+                dashboard_sheet.write(row_start+1, 2, top_diff['difference'], money_format)
+                
+                # Highest Missing
+                top_missing = insight_df.nlargest(1, "missing_2b").iloc[0]
+                dashboard_sheet.write(row_start+2, 0, '📊 Highest Missing in 2B:', header_format)
+                dashboard_sheet.write(row_start+2, 1, top_missing['name'], text_format)
+                dashboard_sheet.write(row_start+2, 2, top_missing['missing_2b'], money_format)
         
-        summary_sheet.conditional_format(f'B4:B{row-1}', {
-            'type': 'cell',
-            'criteria': '<',
-            'value': 0,
-            'format': workbook.add_format({'font_name': 'Aptos Narrow', 'num_format': '₹#,##0.00', 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-        })
-        
-        summary_sheet.add_table(f'A3:C{row-1}', {
-            'columns': [{'header': h} for h in headers],
-            'style': 'Table Style Light 1'
-        })
+        # Auto-fit columns
+        dashboard_sheet.autofit()
         
         # ===== 2. BOOKS DATA SHEET =====
         books_data_list = []
@@ -407,6 +693,7 @@ if "results" in st.session_state:
                     worksheet.set_column(col_num, col_num, 22)
             
             worksheet.freeze_panes(2, 0)
+            worksheet.autofit()
         
         # ===== 3. GSTR-2B DATA SHEET =====
         gstr_data_list = []
@@ -443,6 +730,7 @@ if "results" in st.session_state:
                     worksheet.set_column(col_num, col_num, 22)
             
             worksheet.freeze_panes(2, 0)
+            worksheet.autofit()
         
         # ===== 4. MISSING IN 2B SHEET =====
         if not results["missing_in_2b"].empty:
@@ -472,6 +760,7 @@ if "results" in st.session_state:
             last_row = len(missing_2b) + 2
             worksheet.write(last_row, 3, "Total ITC Impact:", text_format)
             worksheet.write(last_row, 4, missing_2b["ITC Amount"].sum(), money_format)
+            worksheet.autofit()
         
         # ===== 5. MISSING IN BOOKS SHEET =====
         if not results["missing_in_books"].empty:
@@ -501,54 +790,47 @@ if "results" in st.session_state:
             last_row = len(missing_books) + 2
             worksheet.write(last_row, 3, "Total ITC Impact:", text_format)
             worksheet.write(last_row, 4, missing_books["ITC Amount"].sum(), money_format)
+            worksheet.autofit()
         
-        # ===== 6. SUPPLIER ANALYSIS SHEET =====
-        if supplier_data:
+        # ===== 6. SUPPLIER ANALYSIS SHEET (Grouped by GSTIN) =====
+        if supplier_dict:
             analysis_sheet = workbook.add_worksheet("Supplier Analysis")
             
-            supplier_df = pd.DataFrame(supplier_data)
+            supplier_rows = []
+            for gstin, data in supplier_dict.items():
+                names_list = list(data["names"])
+                names_list.sort(key=len, reverse=True)
+                primary_name = names_list[0]
+                other_names = ", ".join(names_list[1:]) if len(names_list) > 1 else "-"
+                
+                supplier_rows.append({
+                    "GSTIN": gstin,
+                    "Primary Name": primary_name,
+                    "Other Names": other_names,
+                    "ITC - Books": data["books_itc"],
+                    "ITC - GSTR-2B": data["gstr_itc"],
+                    "Difference": data["gstr_itc"] - data["books_itc"],
+                    "Missing in 2B (ITC)": data["missing_2b_itc"]
+                })
             
-            # Pivot Table 1: Supplier-wise ITC
-            pivot1 = supplier_df[["Supplier Name", "GSTIN", "ITC - Books", "ITC - GSTR-2B", "Difference", "Missing in 2B (ITC)"]].copy()
-            pivot1 = pivot1.sort_values("Difference", ascending=False)
+            analysis_df = pd.DataFrame(supplier_rows)
+            analysis_df = analysis_df.sort_values("Difference", ascending=False)
             
-            pivot1.to_excel(writer, sheet_name="Supplier Analysis", index=False, startrow=1)
+            analysis_df.to_excel(writer, sheet_name="Supplier Analysis", index=False, startrow=1)
             
             # Format
             worksheet = writer.sheets["Supplier Analysis"]
-            worksheet.write(0, 0, "Supplier-wise ITC Analysis", title_format)
+            worksheet.write(0, 0, "Supplier-wise Analysis (Grouped by GSTIN)", title_format)
             
-            for col_num, col in enumerate(pivot1.columns):
+            for col_num, col in enumerate(analysis_df.columns):
                 worksheet.write(1, col_num, col, header_format)
                 if "ITC" in col or "Difference" in col:
                     worksheet.set_column(col_num, col_num, 18, money_format)
                 else:
-                    worksheet.set_column(col_num, col_num, 22)
-            
-            # Pivot Table 2: Count Analysis (starting at row len(pivot1)+5)
-            start_row = len(pivot1) + 5
-            
-            worksheet.write(start_row, 0, "Supplier-wise Invoice Count Analysis", title_format)
-            
-            pivot2 = supplier_df[["Supplier Name", "GSTIN", "Total Invoices", "Missing in 2B", "Missing in Books"]].copy()
-            pivot2 = pivot2.sort_values("Total Invoices", ascending=False)
-            
-            for col_num, col in enumerate(pivot2.columns):
-                worksheet.write(start_row + 1, col_num, col, header_format)
-            
-            for i, (_, row) in enumerate(pivot2.iterrows()):
-                for col_num, col in enumerate(pivot2.columns):
-                    worksheet.write(start_row + 2 + i, col_num, row[col], text_format)
-            
-            # Conditional Formatting
-            worksheet.conditional_format(f'D{start_row + 2}:E{start_row + 2 + len(pivot2)}', {
-                'type': 'cell',
-                'criteria': '>',
-                'value': 0,
-                'format': workbook.add_format({'font_name': 'Aptos Narrow', 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-            })
+                    worksheet.set_column(col_num, col_num, 25)
             
             worksheet.freeze_panes(2, 0)
+            worksheet.autofit()
         
         # ===== 7. NO ITC SHEET =====
         if not results["no_itc"].empty:
@@ -571,6 +853,7 @@ if "results" in st.session_state:
                     worksheet.set_column(col_num, col_num, 22)
             
             worksheet.freeze_panes(2, 0)
+            worksheet.autofit()
         
         # ===== 8. INVALID GSTIN SHEET =====
         if not results["invalid_gstin"].empty:
@@ -593,13 +876,15 @@ if "results" in st.session_state:
                     worksheet.set_column(col_num, col_num, 22)
             
             worksheet.freeze_panes(2, 0)
+            worksheet.autofit()
     
     output.seek(0)
     
     st.download_button(
-        "⬇ Download Excel Report",
+        "⬇ Download Excel Report (Auto-fit Columns)",
         data=output,
         file_name=f"GST_Reconciliation_{datetime.now().strftime('%d%m%Y')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
+        use_container_width=True,
+        type="primary"
     )
