@@ -222,12 +222,12 @@ if "results" in st.session_state:
         
         # Build supplier analysis
         for gstin, name in all_suppliers:
-            books_itc = 0
-            gstr_itc = 0
+            books_itc = 0.0
+            gstr_itc = 0.0
             missing_2b_count = 0
-            missing_2b_itc = 0
+            missing_2b_itc = 0.0
             missing_books_count = 0
-            missing_books_itc = 0
+            missing_books_itc = 0.0
             total_invoices = 0
             
             # Missing in 2B (in Books but not in 2B)
@@ -264,29 +264,32 @@ if "results" in st.session_state:
         if supplier_data:
             supplier_df = pd.DataFrame(supplier_data)
             
-            # Format currency columns for display
-            display_df = supplier_df.copy()
+            # Sort by absolute difference (using numeric values)
+            supplier_df_sorted = supplier_df.copy()
+            supplier_df_sorted["Abs_Difference"] = abs(supplier_df_sorted["Difference"])
+            supplier_df_sorted = supplier_df_sorted.sort_values("Abs_Difference", ascending=False)
+            
+            # Create display version with formatted currency
+            display_df = supplier_df_sorted.copy()
             for col in ["ITC - Books", "ITC - GSTR-2B", "Difference", "Missing in 2B (ITC)", "Missing in Books (ITC)"]:
                 display_df[col] = display_df[col].apply(lambda x: f"₹{x:,.2f}")
             
-            # Sort by absolute difference (highest first)
-            display_df = display_df.sort_values("Difference", key=lambda x: abs(float(str(x).replace('₹', '').replace(',', ''))), ascending=False)
+            # Drop the temporary column
+            display_df = display_df.drop("Abs_Difference", axis=1)
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
             
-            # High Risk Suppliers (Top 5 by Difference)
+            # High Risk Suppliers (Top 5 by absolute difference)
             st.markdown("### ⚠️ High Risk Suppliers")
             high_risk = display_df.head(5)[["Supplier Name", "GSTIN", "Difference", "Missing in 2B", "Missing in Books"]]
             st.dataframe(high_risk, use_container_width=True, hide_index=True)
             
             # High ITC Suppliers (Top 5 by ITC)
             st.markdown("### 💰 High ITC Suppliers")
-            # Create a copy with numeric values for sorting
-            numeric_df = supplier_df.copy()
-            numeric_df["ITC - Books"] = pd.to_numeric(numeric_df["ITC - Books"])
-            high_itc_numeric = numeric_df.nlargest(5, "ITC - Books")[["Supplier Name", "GSTIN", "ITC - Books"]]
-            high_itc_numeric["ITC - Books"] = high_itc_numeric["ITC - Books"].apply(lambda x: f"₹{x:,.2f}")
-            st.dataframe(high_itc_numeric, use_container_width=True, hide_index=True)
+            # Sort by ITC - Books (numeric)
+            high_itc_df = supplier_df.nlargest(5, "ITC - Books")[["Supplier Name", "GSTIN", "ITC - Books"]].copy()
+            high_itc_df["ITC - Books"] = high_itc_df["ITC - Books"].apply(lambda x: f"₹{x:,.2f}")
+            st.dataframe(high_itc_df, use_container_width=True, hide_index=True)
         else:
             st.info("No supplier data available for analysis.")
 
