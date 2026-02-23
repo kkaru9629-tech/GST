@@ -55,10 +55,11 @@ if "results" in st.session_state:
 
     st.divider()
 
+    # Updated tabs: Fully Matched, Missing in Books, Missing in 2B
     tab1, tab2, tab3 = st.tabs([
         "✅ Fully Matched",
-        "❗ Missing / Value Issues",
-        "💸 Tax Mismatch"
+        "📕 Missing in Books",
+        "📗 Missing in GSTR-2B"
     ])
 
     with tab1:
@@ -68,34 +69,52 @@ if "results" in st.session_state:
                 "Invoice_No_2B",
                 "Taxable_Value_2B",
                 "TOTAL_TAX_2B"
-            ]]
-            st.dataframe(display)
+            ]].rename(columns={
+                "GSTIN_2B": "GSTIN",
+                "Trade_Name_2B": "Supplier Name",
+                "Invoice_No_2B": "Invoice Number",
+                "Taxable_Value_2B": "Taxable Value",
+                "TOTAL_TAX_2B": "ITC Amount"
+            })
+            st.dataframe(display, use_container_width=True)
         else:
             st.info("No fully matched invoices.")
 
     with tab2:
-        combined = pd.concat([
-            results["missing_in_books"],
-            results["missing_in_2b"],
-            results["value_mismatch"]
-        ])
-        if not combined.empty:
-            st.dataframe(combined)
+        if not results["missing_in_books"].empty:
+            display = results["missing_in_books"][[
+                "GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date",
+                "Taxable_Value", "TOTAL_TAX"
+            ]].rename(columns={
+                "Trade_Name": "Supplier Name",
+                "Invoice_No": "Invoice Number",
+                "Invoice_Date": "Invoice Date",
+                "Taxable_Value": "Taxable Value",
+                "TOTAL_TAX": "ITC Amount"
+            })
+            # Format date for display
+            display["Invoice Date"] = pd.to_datetime(display["Invoice Date"]).dt.date
+            st.dataframe(display, use_container_width=True)
         else:
-            st.success("No missing or value mismatch.")
+            st.success("No invoices missing in Books.")
 
     with tab3:
-        if not results["tax_mismatch"].empty:
-            simple = results["tax_mismatch"][[
-                "GSTIN_2B",
-                "Invoice_No_2B",
-                "TOTAL_TAX_2B",
-                "TOTAL_TAX_Tally",
-                "TAX_DIFFERENCE"
-            ]]
-            st.dataframe(simple)
+        if not results["missing_in_2b"].empty:
+            display = results["missing_in_2b"][[
+                "GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date",
+                "Taxable_Value", "TOTAL_TAX"
+            ]].rename(columns={
+                "Trade_Name": "Supplier Name",
+                "Invoice_No": "Invoice Number",
+                "Invoice_Date": "Invoice Date",
+                "Taxable_Value": "Taxable Value",
+                "TOTAL_TAX": "ITC Amount"
+            })
+            # Format date for display
+            display["Invoice Date"] = pd.to_datetime(display["Invoice Date"]).dt.date
+            st.dataframe(display, use_container_width=True)
         else:
-            st.success("No tax mismatch.")
+            st.success("No invoices missing in GSTR-2B.")
 
     # ================= ENHANCED EXCEL REPORT ================= #
 
@@ -119,7 +138,7 @@ if "results" in st.session_state:
             "font_size": 11,
             "bg_color": "#4472C4",
             "font_color": "white",
-            "border": 0,  # NO BORDERS
+            "border": 0,
             "align": "center",
             "valign": "vcenter"
         })
@@ -168,23 +187,12 @@ if "results" in st.session_state:
             "border": 0
         })
         
-        # Center alignment format (no borders)
-        center_format = workbook.add_format({
-            "font_name": font_name,
-            "font_size": 11,
-            "border": 0,
-            "align": "center"
-        })
-        
         def write_sheet(df, name, columns_to_show=None, is_summary=False):
             """Write dataframe with clean column selection - NO HEADER DUPLICATION"""
             if df.empty:
-                # For empty sheets, create a simple message
                 empty_df = pd.DataFrame({"Message": ["No records found"]})
                 empty_df.to_excel(writer, sheet_name=name[:31], index=False, header=True, startrow=0)
                 worksheet = writer.sheets[name[:31]]
-                
-                # Format the message column
                 worksheet.set_column(0, 0, 30, text_format)
                 return
                 
@@ -200,18 +208,16 @@ if "results" in st.session_state:
                 if col in display_df.columns:
                     display_df[col] = pd.to_datetime(display_df[col], errors='coerce').dt.date
             
-            # Write to Excel with headers (this writes headers in row 0)
+            # Write to Excel with headers
             display_df.to_excel(writer, sheet_name=name[:31], index=False, header=True, startrow=0)
             worksheet = writer.sheets[name[:31]]
             
-            # Now format the headers that were written by to_excel
+            # Format headers
             for col_num, column in enumerate(display_df.columns):
-                # Write over the header with our formatted version
                 worksheet.write(0, col_num, column, summary_header if is_summary else regular_header)
             
-            # Apply formatting to data rows (starting from row 1)
+            # Apply formatting to data rows
             for col_num, column in enumerate(display_df.columns):
-                # Calculate column width
                 if not display_df[column].isna().all():
                     max_len = max(
                         display_df[column].astype(str).map(len).max(),
@@ -221,15 +227,12 @@ if "results" in st.session_state:
                     max_len = len(column) + 2
                 max_len = min(max_len, 50)
                 
-                # Apply appropriate format based on column type
                 if 'Date' in column or 'date' in column:
                     worksheet.set_column(col_num, col_num, max_len, date_format)
                 elif any(x in column.lower() for x in ['value', 'tax', 'itc', 'amount', 'diff', 'difference']):
                     worksheet.set_column(col_num, col_num, max_len, money_format)
                 elif any(x in column.lower() for x in ['count', 'invoices', 'matched']):
                     worksheet.set_column(col_num, col_num, max_len, integer_format)
-                elif any(x in column.lower() for x in ['gstin', 'invoice', 'number']):
-                    worksheet.set_column(col_num, col_num, max_len, text_format)
                 else:
                     worksheet.set_column(col_num, col_num, max_len, text_format)
         
@@ -301,16 +304,7 @@ if "results" in st.session_state:
         summary_df.to_excel(writer, sheet_name="Executive Summary", index=False, header=False, startrow=0)
         summary_sheet = writer.sheets["Executive Summary"]
         
-        # Format summary sheet - NO BORDERS
         no_border_format = workbook.add_format({
-            "font_name": font_name,
-            "font_size": 11,
-            "border": 0,
-            "valign": "vcenter"
-        })
-        
-        bold_no_border_format = workbook.add_format({
-            "bold": True,
             "font_name": font_name,
             "font_size": 11,
             "border": 0,
