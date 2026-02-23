@@ -13,7 +13,6 @@ def clean_string(val):
 def clean_invoice(inv):
     if pd.isna(inv):
         return ""
-    # Fully alphanumeric for safe match
     return re.sub(r"[^A-Z0-9]", "", str(inv).upper())
 
 def validate_gstin(gstin):
@@ -76,7 +75,6 @@ def parse_tally(df):
 
     df = df.copy()
 
-    # Detect header safely
     header_idx = None
     for i in range(min(len(df), 30)):
         row = " ".join(df.iloc[i].astype(str).str.lower().values)
@@ -114,7 +112,6 @@ def parse_tally(df):
     df["SGST"] = df[tax_cols['SGST']].apply(pd.to_numeric,errors='coerce').sum(axis=1) if tax_cols['SGST'] else 0
     df["IGST"] = df[tax_cols['IGST']].apply(pd.to_numeric,errors='coerce').sum(axis=1) if tax_cols['IGST'] else 0
 
-    # TDS detection (original logic intact)
     tds_cols = [c for c in df.columns if any(x in str(c).lower() for x in
         ['tds','t.d.s','tax deducted','tax deducted at source'])]
 
@@ -122,32 +119,32 @@ def parse_tally(df):
 
     df["Invoice_Value"] = pd.to_numeric(df["Invoice_Value"], errors="coerce")
     df["TOTAL_TAX"] = df["CGST"] + df["SGST"] + df["IGST"]
-
     df["Taxable_Value"] = df["Invoice_Value"] + df["TDS"] - df["TOTAL_TAX"]
 
-    # ===============================
-    # ✅ NEW FEATURE 1 — NO ITC
-    # ===============================
-
+    # 🟡 NO ITC
     no_itc_df = df[df["TOTAL_TAX"] == 0].copy()
 
-    # ===============================
-    # ✅ NEW FEATURE 2 — INVALID GSTIN
-    # ===============================
-
+    # ⚠ INVALID GSTIN
     df["GSTIN_VALID"] = df["GSTIN"].apply(validate_gstin)
     invalid_gstin_df = df[~df["GSTIN_VALID"]].copy()
 
-    # Skip invalid GSTIN invoices
+    # Skip invalid GSTIN
     df = df[df["GSTIN_VALID"]]
 
     df = df.drop_duplicates(subset=["GSTIN","Invoice_No"])
     df = df[df["Invoice_Date"].notna()]
 
-    return df[[
+    valid_df = df[[
         "GSTIN","Trade_Name","Invoice_No","Invoice_Date",
         "Taxable_Value","Invoice_Value","IGST","CGST","SGST","TOTAL_TAX"
-    ]], no_itc_df, invalid_gstin_df
+    ]]
+
+    return valid_df, no_itc_df, invalid_gstin_df
+
+
+# ===========================================
+# PARSE GSTR-2B
+# ===========================================
 
 def parse_gstr2b(df):
 
@@ -207,37 +204,15 @@ def reconcile(gstr2b_df, tally_df):
         suffixes=("_2B","_Tally")
     )
 
-    # Differences
-    merged["VALUE_DIFFERENCE"] = (
-        merged["Taxable_Value_2B"]
-        - merged["Taxable_Value_Tally"]
-    )
+    merged["VALUE_DIFFERENCE"] = merged["Taxable_Value_2B"] - merged["Taxable_Value_Tally"]
+    merged["TAX_DIFFERENCE"] = merged["TOTAL_TAX_2B"] - merged["TOTAL_TAX_Tally"]
 
-    merged["TAX_DIFFERENCE"] = (
-        merged["TOTAL_TAX_2B"]
-        - merged["TOTAL_TAX_Tally"]
-    )
+    merged["VALUE_MATCH"] = abs(merged["VALUE_DIFFERENCE"]) <= 1
+    merged["TAX_MATCH"] = abs(merged["TAX_DIFFERENCE"]) <= 1
 
-    # Matching Logic
-    merged["VALUE_MATCH"] = (
-        abs(merged["VALUE_DIFFERENCE"]) <= 1
-    )
-
-    merged["TAX_MATCH"] = (
-        abs(merged["TAX_DIFFERENCE"]) <= 1
-    )
-
-    fully_matched = merged[
-        merged["VALUE_MATCH"] & merged["TAX_MATCH"]
-    ]
-
-    value_mismatch = merged[
-        ~merged["VALUE_MATCH"]
-    ]
-
-    tax_mismatch = merged[
-        merged["VALUE_MATCH"] & ~merged["TAX_MATCH"]
-    ]
+    fully_matched = merged[merged["VALUE_MATCH"] & merged["TAX_MATCH"]]
+    value_mismatch = merged[~merged["VALUE_MATCH"]]
+    tax_mismatch = merged[merged["VALUE_MATCH"] & ~merged["TAX_MATCH"]]
 
     match_percent = round(
         (len(fully_matched) / len(gstr2b_df) * 100)
