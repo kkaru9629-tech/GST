@@ -171,19 +171,16 @@ def show_format_badge(fmt: str):
 
 def load_raw(uploaded_file) -> pd.DataFrame:
     """
-    Load file into DataFrame without any header assumptions.
-    All cells are coerced to string to prevent float/join errors downstream.
+    Load file into a raw DataFrame (no header, no dtype forcing).
+    Parsers handle mixed types (datetime, int, float, str, NaN) directly.
     """
     name = uploaded_file.name.lower()
     if name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file, header=None, dtype=str)
+        return pd.read_csv(uploaded_file, header=None)
     elif name.endswith(".xls"):
-        # xlrd does not reliably honour dtype=str — load then convert
-        df = pd.read_excel(uploaded_file, engine="xlrd", header=None)
+        return pd.read_excel(uploaded_file, header=None)
     else:
-        df = pd.read_excel(uploaded_file, header=None)
-    # Force every cell to str, replacing NaN with empty string
-    return df.fillna("").astype(str)
+        return pd.read_excel(uploaded_file, header=None)
 
 def parse_books(uploaded_file) -> tuple:
     """
