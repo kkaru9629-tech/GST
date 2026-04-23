@@ -1,6 +1,6 @@
 """
 GST Reconciliation App
-Version: 8.0 — Premium UI redesign
+Version: 8.1 — Zero-flood fix + Dynamic tabs
 """
 
 import streamlit as st
@@ -38,13 +38,10 @@ st.set_page_config(page_title="GST Reconciliation", layout="wide")
 
 st.markdown("""
 <style>
-    /* Base font */
     .stApp, .stMarkdown, .stText, .stCaption, .stMetric,
     .stTabs [data-baseweb="tab"], button, label, input {
         font-family: 'Aptos Narrow', 'Aptos', sans-serif !important;
     }
-
-    /* Insight cards */
     .insight-card {
         border-radius: 12px;
         padding: 20px 24px;
@@ -75,8 +72,6 @@ st.markdown("""
     .card-yellow { background:#FFEDD5; }
     .card-yellow .card-number { color:#9A3412; }
     .card-yellow .card-label  { color:#9A3412; }
-
-    /* Warning box for data issues */
     .warning-box {
         background-color: #FEF2F2;
         padding: 1rem;
@@ -84,8 +79,6 @@ st.markdown("""
         border-radius: 4px;
         margin: 1rem 0;
     }
-
-    /* Filter bar */
     .filter-section {
         background: #F8FAFC;
         border: 1px solid #E2E8F0;
@@ -93,18 +86,9 @@ st.markdown("""
         padding: 16px 20px;
         margin: 12px 0;
     }
-
-    /* Remark chips in tables */
-    .remark-matched   { background:#DCFCE7; color:#166534; padding:2px 8px; border-radius:8px; font-size:0.8rem; }
-    .remark-missing-g { background:#FEE2E2; color:#991B1B; padding:2px 8px; border-radius:8px; font-size:0.8rem; }
-    .remark-missing-b { background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:8px; font-size:0.8rem; }
-    .remark-taxdiff   { background:#FFEDD5; color:#9A3412; padding:2px 8px; border-radius:8px; font-size:0.8rem; }
-
     .stTabs [data-baseweb="tab-list"] { gap: 2px; }
     .stTabs [data-baseweb="tab"]      { padding: 8px 16px; }
     .streamlit-expanderHeader          { font-size: 1rem !important; }
-
-    /* Download buttons row */
     .download-row { display:flex; gap:12px; margin-top:16px; }
 </style>
 """, unsafe_allow_html=True)
@@ -117,13 +101,11 @@ st.caption("Books vs GSTR-2B · Supports Tally PR, GSTR-2B Excel & Standard Temp
 # =================== SAFE DISPLAY HELPER =================== #
 
 def safe_dataframe(df, column_config=None, empty_message="No data to display", caption=None):
-    """Render a dataframe only when it has real rows. Shows info message otherwise."""
+    """Render a dataframe only when it has real rows."""
     if df is None or df.empty:
         st.info(empty_message)
         return False
-    # Drop rows that are entirely empty / all-NaN
     df = df.dropna(how="all")
-    # Drop rows where Invoice_No / GSTIN are blank placeholders
     for col in ["Invoice_No", "Invoice No"]:
         if col in df.columns:
             mask = df[col].astype(str).str.strip().str.lower() != "nan"
@@ -167,7 +149,7 @@ def load_raw(uploaded_file) -> pd.DataFrame:
 def parse_books(uploaded_file):
     raw = load_raw(uploaded_file)
     fmt = detect_file_format(raw, uploaded_file.name)
-    logger.info(f"Books format detected: {fmt}")          # log only — no UI badge
+    logger.info(f"Books format detected: {fmt}")
     if fmt == "tally_pr":
         return (*parse_tally_purchase_register(raw), fmt)
     uploaded_file.seek(0)
@@ -178,7 +160,7 @@ def parse_books(uploaded_file):
 def parse_gstr(uploaded_file):
     raw = load_raw(uploaded_file)
     fmt = detect_file_format(raw, uploaded_file.name)
-    logger.info(f"GSTR-2B format detected: {fmt}")        # log only — no UI badge
+    logger.info(f"GSTR-2B format detected: {fmt}")
     if fmt == "gstr2b_excel":
         return parse_gstr2b_excel(raw), fmt
     uploaded_file.seek(0)
@@ -233,7 +215,7 @@ if "results" not in st.session_state:
 
 r   = st.session_state["results"]
 s   = r["summary"]
-tol = tolerance   # use current slider value for display logic
+tol = tolerance
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -244,7 +226,7 @@ def fmt_date(val) -> str:
         return ""
 
 def coerce_str_cols(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert only truly missing values (None/NaN) to empty strings. Real data is untouched."""
+    """Convert only truly missing values (None/NaN) to empty strings. Real data untouched."""
     df = df.copy()
     for col in df.select_dtypes(include=["object"]).columns:
         df[col] = df[col].apply(lambda v: "" if (v is None or pd.isna(v)) else str(v))
@@ -380,7 +362,6 @@ for _, row in r["gstr_raw"].iterrows():
 detail_df = pd.DataFrame(detail_data).sort_values(["Supplier", "Date"]) if detail_data else pd.DataFrame()
 
 def filter_detail(df):
-    """Apply GSTIN, supplier, and status filters to detail dataframe."""
     if df.empty:
         return df
     if f_gstin:
@@ -432,20 +413,15 @@ MISS_CFG = {
     "ITC":        st.column_config.NumberColumn("ITC",      width=110, format="%.2f"),
 }
 
-# ── TABS ─────────────────────────────────────────────────────────────────────
+# ── TABS (DYNAMIC — only tabs with data are created) ──────────────────────────
 
-tabs = st.tabs([
-    "📋 Invoice Details",
-    "📚 Books",
-    "📊 GSTR-2B",
-    "❌ Missing in 2B",
-    "📕 Missing in Books",
-    "📋 Supplier Summary",
-])
+tab_labels = []
+tab_callbacks = []
 
-# Tab 0: Invoice Level Details
-with tabs[0]:
-    if not detail_df.empty:
+# Invoice Details
+if not detail_df.empty:
+    tab_labels.append("📋 Invoice Details")
+    def _render_invoice_details():
         display_df = filter_detail(detail_df.copy())
         safe_dataframe(
             coerce_str_cols(display_df),
@@ -453,106 +429,97 @@ with tabs[0]:
             empty_message="No invoices match the current filters.",
             caption=f"Showing {len(display_df)} of {len(detail_df)} invoices",
         )
-    else:
-        st.info("No invoice data available.")
+    tab_callbacks.append(_render_invoice_details)
 
-# Tab 1: Books
-with tabs[1]:
-    if not r["books_raw"].empty:
+# Books
+if not r["books_raw"].empty:
+    tab_labels.append("📚 Books")
+    def _render_books():
         df_b = r["books_raw"].copy()
         df_b["Invoice_Date"] = pd.to_datetime(df_b["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_b = apply_filters(coerce_str_cols(df_b), f_gstin, f_supplier)
-        safe_dataframe(
-            df_b,
-            column_config=STD_BOOK_CFG,
-            empty_message="No Books data matches the current filters.",
-            caption=f"{len(df_b)} records",
-        )
-    else:
-        st.info("No Books data loaded.")
+        safe_dataframe(df_b, column_config=STD_BOOK_CFG,
+                      empty_message="No Books data matches filters.",
+                      caption=f"{len(df_b)} records")
+    tab_callbacks.append(_render_books)
 
-# Tab 2: GSTR-2B
-with tabs[2]:
-    if not r["gstr_raw"].empty:
+# GSTR-2B
+if not r["gstr_raw"].empty:
+    tab_labels.append("📊 GSTR-2B")
+    def _render_gstr():
         df_g = r["gstr_raw"].copy()
         df_g["Invoice_Date"] = pd.to_datetime(df_g["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_g = apply_filters(coerce_str_cols(df_g), f_gstin, f_supplier)
-        safe_dataframe(
-            df_g,
-            column_config=STD_BOOK_CFG,
-            empty_message="No GSTR-2B data matches the current filters.",
-            caption=f"{len(df_g)} records",
-        )
-    else:
-        st.info("No GSTR-2B data loaded.")
+        safe_dataframe(df_g, column_config=STD_BOOK_CFG,
+                      empty_message="No GSTR-2B data matches filters.",
+                      caption=f"{len(df_g)} records")
+    tab_callbacks.append(_render_gstr)
 
-# Tab 3: Missing in 2B
-with tabs[3]:
-    if not r["missing_2b"].empty:
+# Missing in 2B
+if not r["missing_2b"].empty:
+    tab_labels.append("❌ Missing in GSTR-2B")
+    def _render_miss2b():
         df_m = r["missing_2b"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]].copy()
         df_m["Invoice_Date"] = pd.to_datetime(df_m["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_m.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
         df_m = apply_filters(coerce_str_cols(df_m), f_gstin, f_supplier)
-        safe_dataframe(
-            df_m,
-            column_config=MISS_CFG,
-            empty_message="No missing invoices match the current filters.",
-            caption=f"💰 ITC at Risk: ₹{df_m['ITC'].sum():,.2f} across {len(df_m)} invoices",
-        )
-    else:
-        st.success("✅ No invoices missing in GSTR-2B.")
+        safe_dataframe(df_m, column_config=MISS_CFG,
+                      empty_message="No missing invoices match filters.",
+                      caption=f"💰 ITC at Risk: ₹{df_m['ITC'].sum():,.2f} across {len(df_m)} invoices")
+    tab_callbacks.append(_render_miss2b)
 
-# Tab 4: Missing in Books
-with tabs[4]:
-    if not r["missing_books"].empty:
+# Missing in Books
+if not r["missing_books"].empty:
+    tab_labels.append("📕 Missing in Books")
+    def _render_missbooks():
         df_mb = r["missing_books"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]].copy()
         df_mb["Invoice_Date"] = pd.to_datetime(df_mb["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_mb.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
         df_mb = apply_filters(coerce_str_cols(df_mb), f_gstin, f_supplier)
-        safe_dataframe(
-            df_mb,
-            column_config=MISS_CFG,
-            empty_message="No missing invoices match the current filters.",
-            caption=f"{len(df_mb)} invoices in GSTR-2B not found in Books",
-        )
-    else:
-        st.success("✅ No invoices missing in Books.")
+        safe_dataframe(df_mb, column_config=MISS_CFG,
+                      empty_message="No missing invoices match filters.",
+                      caption=f"{len(df_mb)} invoices in GSTR-2B not found in Books")
+    tab_callbacks.append(_render_missbooks)
 
-# Tab 5: Supplier Summary
-with tabs[5]:
-    all_gstins = set()
-    if not r["books_raw"].empty: all_gstins.update(r["books_raw"]["GSTIN"].unique())
-    if not r["gstr_raw"].empty:  all_gstins.update(r["gstr_raw"]["GSTIN"].unique())
-    sup_rows = []
-    for gstin in all_gstins:
-        ib = r["books_raw"][r["books_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum() if not r["books_raw"].empty else 0
-        ig = r["gstr_raw"][r["gstr_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum()   if not r["gstr_raw"].empty  else 0
-        sup_rows.append({
-            "GSTIN":            str(gstin),
-            "Supplier":         str(trade_name_map.get(gstin, "Unknown")),
-            "ITC as per Books": round(float(ib), 2),
-            "ITC as per 2B":    round(float(ig), 2),
-            "ITC Difference":   round(float(ig) - float(ib), 2),
-        })
-    if sup_rows:
-        sup_df = pd.DataFrame(sup_rows).sort_values("Supplier")
-        sup_df = sup_df[sup_df["GSTIN"].str.strip().replace("nan","") != ""]
-        if f_gstin:
-            sup_df = sup_df[sup_df["GSTIN"].str.contains(f_gstin, case=False, na=False)]
-        if f_supplier:
-            sup_df = sup_df[sup_df["Supplier"].str.contains(f_supplier, case=False, na=False)]
-        safe_dataframe(
-            sup_df,
-            column_config={
-                "GSTIN":            st.column_config.TextColumn("GSTIN",       width=180),
-                "Supplier":         st.column_config.TextColumn("Supplier",    width=280),
-                "ITC as per Books": st.column_config.NumberColumn("📚 Books",  width=140, format="%.2f"),
-                "ITC as per 2B":    st.column_config.NumberColumn("📊 GSTR-2B",width=140, format="%.2f"),
-                "ITC Difference":   st.column_config.NumberColumn("📉 Diff",   width=130, format="%.2f"),
-            },
-            empty_message="No supplier data matches the current filters.",
-            caption=f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}" if not sup_df.empty else None,
-        )
+# Supplier Summary
+if not r["books_raw"].empty or not r["gstr_raw"].empty:
+    tab_labels.append("📋 Supplier Summary")
+    def _render_supplier():
+        all_gstins = set()
+        if not r["books_raw"].empty: all_gstins.update(r["books_raw"]["GSTIN"].unique())
+        if not r["gstr_raw"].empty:  all_gstins.update(r["gstr_raw"]["GSTIN"].unique())
+        sup_rows = []
+        for gstin in all_gstins:
+            ib = r["books_raw"][r["books_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum() if not r["books_raw"].empty else 0
+            ig = r["gstr_raw"][r["gstr_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum()   if not r["gstr_raw"].empty  else 0
+            sup_rows.append({
+                "GSTIN": str(gstin), "Supplier": str(trade_name_map.get(gstin, "Unknown")),
+                "ITC as per Books": round(float(ib), 2), "ITC as per 2B": round(float(ig), 2),
+                "ITC Difference": round(float(ig) - float(ib), 2),
+            })
+        if sup_rows:
+            sup_df = pd.DataFrame(sup_rows).sort_values("Supplier")
+            sup_df = sup_df[sup_df["GSTIN"].str.strip().str.lower().replace("nan","") != ""]
+            if f_gstin: sup_df = sup_df[sup_df["GSTIN"].str.contains(f_gstin, case=False, na=False)]
+            if f_supplier: sup_df = sup_df[sup_df["Supplier"].str.contains(f_supplier, case=False, na=False)]
+            safe_dataframe(sup_df, column_config={
+                "GSTIN": st.column_config.TextColumn("GSTIN", width=180),
+                "Supplier": st.column_config.TextColumn("Supplier", width=280),
+                "ITC as per Books": st.column_config.NumberColumn("📚 Books", width=140, format="%.2f"),
+                "ITC as per 2B": st.column_config.NumberColumn("📊 GSTR-2B", width=140, format="%.2f"),
+                "ITC Difference": st.column_config.NumberColumn("📉 Diff", width=130, format="%.2f"),
+            }, empty_message="No supplier data matches filters.",
+            caption=f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}")
+    tab_callbacks.append(_render_supplier)
+
+# Render tabs
+if tab_labels:
+    tabs = st.tabs(tab_labels)
+    for tab, callback in zip(tabs, tab_callbacks):
+        with tab:
+            callback()
+else:
+    st.info("No data available to display in any tab.")
 
 # ── ZERO ITC ─────────────────────────────────────────────────────────────────
 
@@ -639,7 +606,6 @@ with col_dl1:
         wb   = writer.book
         fmts = _build_workbook_formats(wb)
 
-        # Summary sheet
         summary_df = post_processing_cleaner(pd.DataFrame({
             "Particulars": ["ITC - Books","ITC - GSTR-2B","Difference","ITC at Risk","Match %",
                             "Total Books","Total GSTR","Matched","Tax Diff","Missing 2B","Missing Books"],
@@ -651,40 +617,47 @@ with col_dl1:
         _write_sheet(ws_s, "Reconciliation Summary", list(summary_df.columns),
                      summary_df.values.tolist(), {"Particulars":"text","Value":"number"}, fmts)
 
-        # Books
         if not r["books_raw"].empty:
             bdf = post_processing_cleaner(r["books_raw"].copy())
             _write_sheet(wb.add_worksheet("Books"), "Books Data",
                          list(bdf.columns), bdf.values.tolist(), BOOK_CT, fmts)
 
-        # GSTR-2B
         if not r["gstr_raw"].empty:
             gdf = post_processing_cleaner(r["gstr_raw"].copy())
             _write_sheet(wb.add_worksheet("GSTR-2B"), "GSTR-2B Data",
                          list(gdf.columns), gdf.values.tolist(), BOOK_CT, fmts)
 
-        # Missing in 2B
         if not r["missing_2b"].empty:
             mdf = post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy())
             _write_sheet(wb.add_worksheet("Missing in 2B"), "Missing in 2B",
                          list(mdf.columns), mdf.values.tolist(), MISS_CT, fmts)
 
-        # Missing in Books
         if not r["missing_books"].empty:
             mbdf = post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy())
             _write_sheet(wb.add_worksheet("Missing in Books"), "Missing in Books",
                          list(mbdf.columns), mbdf.values.tolist(), MISS_CT, fmts)
 
         # Supplier Wise ITC Summary
-        if sup_rows:
-            sdf = post_processing_cleaner(pd.DataFrame(sup_rows))
+        supplier_gstins = set()
+        if not r["books_raw"].empty: supplier_gstins.update(r["books_raw"]["GSTIN"].unique())
+        if not r["gstr_raw"].empty:  supplier_gstins.update(r["gstr_raw"]["GSTIN"].unique())
+        sup_rows_all = []
+        for gstin in supplier_gstins:
+            ib = r["books_raw"][r["books_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum() if not r["books_raw"].empty else 0
+            ig = r["gstr_raw"][r["gstr_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum()   if not r["gstr_raw"].empty  else 0
+            sup_rows_all.append({
+                "GSTIN": str(gstin), "Supplier": str(trade_name_map.get(gstin, "Unknown")),
+                "ITC as per Books": round(float(ib), 2), "ITC as per 2B": round(float(ig), 2),
+                "ITC Difference": round(float(ig) - float(ib), 2),
+            })
+        if sup_rows_all:
+            sdf = post_processing_cleaner(pd.DataFrame(sup_rows_all))
             _write_sheet(wb.add_worksheet("Supplier Wise ITC Summary"), "Supplier Wise ITC Summary",
                          ["GSTIN","Supplier","ITC as per Books","ITC as per 2B","ITC Difference"],
                          sdf[["GSTIN","Supplier","ITC as per Books","ITC as per 2B","ITC Difference"]].values.tolist(),
                          {"GSTIN":"text","Supplier":"text","ITC as per Books":"number",
                           "ITC as per 2B":"number","ITC Difference":"number"}, fmts)
 
-        # Supplier Drill Down
         if not detail_df.empty:
             ddf = detail_df.copy()
             ddf["Invoice Date"] = pd.to_datetime(ddf["Date"], format="%d-%b-%Y", errors="coerce")
@@ -716,7 +689,6 @@ with col_dl1:
             ws_dd.freeze_panes(2, 0)
             ws_dd.autofit()
 
-        # Zero ITC
         if not r["no_itc"].empty:
             nidf = post_processing_cleaner(
                 r["no_itc"][["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","Invoice_Value"]].copy())
@@ -742,7 +714,6 @@ with col_dl2:
         wb2   = writer.book
         fmts2 = _build_workbook_formats(wb2)
 
-        # Sheet 1: Missing in GSTR-2B
         if not r["missing_2b"].empty:
             mdf = post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy())
             _write_sheet(wb2.add_worksheet("Missing in 2B"), "Invoices Missing in GSTR-2B",
@@ -751,7 +722,6 @@ with col_dl2:
             ws_e = wb2.add_worksheet("Missing in 2B")
             ws_e.write(0, 0, "No invoices missing in GSTR-2B ✓", fmts2["title"])
 
-        # Sheet 2: Missing in Books
         if not r["missing_books"].empty:
             mbdf = post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy())
             _write_sheet(wb2.add_worksheet("Missing in Books"), "Invoices Missing in Books",
@@ -760,7 +730,6 @@ with col_dl2:
             ws_e = wb2.add_worksheet("Missing in Books")
             ws_e.write(0, 0, "No invoices missing in Books ✓", fmts2["title"])
 
-        # Sheet 3: Tax Differences
         tax_diff_df = r.get("tax_diff", pd.DataFrame())
         if not tax_diff_df.empty:
             td_rows = []
@@ -786,7 +755,6 @@ with col_dl2:
             ws_e = wb2.add_worksheet("Tax Differences")
             ws_e.write(0, 0, "No tax differences found ✓", fmts2["title"])
 
-        # Sheet 4: Data Issues
         if not all_issues.empty:
             idf = all_issues.copy()
             for col in idf.select_dtypes(include=["object"]).columns:
