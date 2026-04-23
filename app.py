@@ -372,7 +372,10 @@ if "results" in st.session_state:
         with st.expander("🔍 View Issues", expanded=True):
             df_issues = all_issues.copy()
             if "Invoice_Date" in df_issues.columns:
-                df_issues["Invoice_Date"] = pd.to_datetime(df_issues["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y")
+                df_issues["Invoice_Date"] = pd.to_datetime(df_issues["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
+            # Force all object columns to str to prevent Streamlit join errors
+            for _col in df_issues.select_dtypes(include=["object"]).columns:
+                df_issues[_col] = df_issues[_col].apply(lambda v: "" if (v is None or (isinstance(v,float) and not isinstance(v,bool))) else str(v))
             cols = ["Issue"] + [c for c in df_issues.columns if c != "Issue"]
             df_issues = df_issues[cols]
             st.dataframe(df_issues, use_container_width=True, hide_index=True,
@@ -425,21 +428,21 @@ if "results" in st.session_state:
         if not r["books_raw"].empty:
             df_d = r["books_raw"].copy()
             if "Invoice_Date" in df_d.columns:
-                df_d["Invoice_Date"] = pd.to_datetime(df_d["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y")
+                df_d["Invoice_Date"] = pd.to_datetime(df_d["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
             st.dataframe(df_d, use_container_width=True, hide_index=True, column_config=STD_COL_CFG)
 
     with tabs[1]:
         if not r["gstr_raw"].empty:
             df_d = r["gstr_raw"].copy()
             if "Invoice_Date" in df_d.columns:
-                df_d["Invoice_Date"] = pd.to_datetime(df_d["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y")
+                df_d["Invoice_Date"] = pd.to_datetime(df_d["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
             st.dataframe(df_d, use_container_width=True, hide_index=True, column_config=STD_COL_CFG)
 
     with tabs[2]:
         if not r["missing_2b"].empty:
             df = r["missing_2b"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]].copy()
             if "Invoice_Date" in df.columns:
-                df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y")
+                df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
             df.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
             st.dataframe(df, use_container_width=True, hide_index=True,
                 column_config={
@@ -456,7 +459,7 @@ if "results" in st.session_state:
         if not r["missing_books"].empty:
             df = r["missing_books"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]].copy()
             if "Invoice_Date" in df.columns:
-                df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y")
+                df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
             df.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
             st.dataframe(df, use_container_width=True, hide_index=True,
                 column_config={
@@ -534,7 +537,7 @@ if "results" in st.session_state:
                 detail_data.append({
                     "GSTIN": gstin, "Supplier": supplier,
                     "Invoice No": row["Invoice_No"],
-                    "Date": pd.to_datetime(row["Invoice_Date"]).strftime("%d-%b-%Y"),
+                    "Date": pd.to_datetime(row["Invoice_Date"]).strftime("%d-%b-%Y") if pd.notna(row["Invoice_Date"]) else "",
                     "ITC as per Books": itc_books, "ITC as per 2B": itc_gstr,
                     "Difference": difference, "Remarks": remark,
                 })
@@ -542,7 +545,7 @@ if "results" in st.session_state:
                 detail_data.append({
                     "GSTIN": gstin, "Supplier": supplier,
                     "Invoice No": row["Invoice_No"],
-                    "Date": pd.to_datetime(row["Invoice_Date"]).strftime("%d-%b-%Y"),
+                    "Date": pd.to_datetime(row["Invoice_Date"]).strftime("%d-%b-%Y") if pd.notna(row["Invoice_Date"]) else "",
                     "ITC as per Books": row["TOTAL_TAX"], "ITC as per 2B": 0.0,
                     "Difference": -row["TOTAL_TAX"], "Remarks": "❌ Missing in GST",
                 })
@@ -557,7 +560,7 @@ if "results" in st.session_state:
             detail_data.append({
                 "GSTIN": gstin, "Supplier": supplier,
                 "Invoice No": row["Invoice_No"],
-                "Date": pd.to_datetime(row["Invoice_Date"]).strftime("%d-%b-%Y"),
+                "Date": pd.to_datetime(row["Invoice_Date"]).strftime("%d-%b-%Y") if pd.notna(row["Invoice_Date"]) else "",
                 "ITC as per Books": 0.0, "ITC as per 2B": row["TOTAL_TAX"],
                 "Difference": row["TOTAL_TAX"], "Remarks": "📕 Missing in Books",
             })
@@ -583,7 +586,7 @@ if "results" in st.session_state:
         st.markdown("## 🟡 Zero ITC Invoices")
         df = r["no_itc"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "Invoice_Value"]].copy()
         if "Invoice_Date" in df.columns:
-            df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y")
+            df["Invoice_Date"] = pd.to_datetime(df["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "Invoice Value"]
         st.dataframe(df, use_container_width=True, hide_index=True,
             column_config={
@@ -627,9 +630,13 @@ if "results" in st.session_state:
                     ct = col_types.get(headers[ci], "text")
                     if ct == "date" and pd.notna(val):
                         try:
-                            ws.write_datetime(ri + 2, ci, pd.to_datetime(val), fmt_date)
+                            dt_val = pd.to_datetime(val)
+                            if pd.isna(dt_val):
+                                safe_write_text(ws, ri + 2, ci, "", fmt_text)
+                            else:
+                                ws.write_datetime(ri + 2, ci, dt_val.to_pydatetime(), fmt_date)
                         except Exception:
-                            safe_write_text(ws, ri + 2, ci, val, fmt_text)
+                            safe_write_text(ws, ri + 2, ci, str(val) if pd.notna(val) else "", fmt_text)
                     elif ct == "number":
                         safe_write_number(ws, ri + 2, ci, val, fmt_number)
                     else:
@@ -802,9 +809,13 @@ if "results" in st.session_state:
                     safe_write_text(ws_dd,   ri + 2, 1, row_data["Supplier"],         fmt_text)
                     safe_write_text(ws_dd,   ri + 2, 2, row_data["Invoice No"],       fmt_text)
                     try:
-                        ws_dd.write_datetime(ri + 2, 3, row_data["Invoice Date"],     fmt_date)
+                        inv_dt = row_data["Invoice Date"]
+                        if pd.notna(inv_dt):
+                            ws_dd.write_datetime(ri + 2, 3, pd.Timestamp(inv_dt).to_pydatetime(), fmt_date)
+                        else:
+                            safe_write_text(ws_dd, ri + 2, 3, "", fmt_text)
                     except Exception:
-                        safe_write_text(ws_dd, ri + 2, 3, str(row_data["Invoice Date"]), fmt_text)
+                        safe_write_text(ws_dd, ri + 2, 3, "", fmt_text)
                     safe_write_number(ws_dd, ri + 2, 4, row_data["ITC as per Books"], fmt_number)
                     safe_write_number(ws_dd, ri + 2, 5, row_data["ITC as per 2B"],   fmt_number)
                     safe_write_number(ws_dd, ri + 2, 6, row_data["Difference"],       fmt_number)
