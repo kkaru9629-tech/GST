@@ -114,6 +114,27 @@ st.markdown("""
 st.title("GST Reconciliation")
 st.caption("Books vs GSTR-2B · Supports Tally PR, GSTR-2B Excel & Standard Template")
 
+# =================== SAFE DISPLAY HELPER =================== #
+
+def safe_dataframe(df, column_config=None, empty_message="No data to display", caption=None):
+    """Render a dataframe only when it has real rows. Shows info message otherwise."""
+    if df is None or df.empty:
+        st.info(empty_message)
+        return False
+    # Drop rows that are entirely empty / all-NaN
+    df = df.dropna(how="all")
+    # Drop rows where Invoice_No / GSTIN are blank placeholders
+    for col in ["Invoice_No", "Invoice No"]:
+        if col in df.columns:
+            df = df[df[col].astype(str).str.strip().replace("nan", "") != ""]
+    if df.empty:
+        st.info(empty_message)
+        return False
+    if caption:
+        st.caption(caption)
+    st.dataframe(df, use_container_width=True, hide_index=True, column_config=column_config)
+    return True
+
 # =================== UPLOAD =================== #
 
 col1, col2 = st.columns(2)
@@ -257,7 +278,8 @@ if not all_issues.empty:
             df_iss["Invoice_Date"] = pd.to_datetime(df_iss["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_iss = coerce_str_cols(df_iss)
         cols_order = ["Issue"] + [c for c in df_iss.columns if c != "Issue"]
-        st.dataframe(df_iss[cols_order], use_container_width=True, hide_index=True,
+        safe_dataframe(
+            df_iss[cols_order],
             column_config={
                 "Issue":         st.column_config.TextColumn("Issue",        width=220),
                 "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
@@ -266,10 +288,13 @@ if not all_issues.empty:
                 "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
                 "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
                 "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
-            })
+            },
+            empty_message="No issues to display.",
+        )
         ic = df_iss["Issue"].value_counts().reset_index()
         ic.columns = ["Issue Type", "Count"]
-        st.dataframe(ic, use_container_width=True, hide_index=True)
+        if not ic.empty:
+            st.dataframe(ic, use_container_width=True, hide_index=True)
 
 # ── QUICK INSIGHT CARDS ───────────────────────────────────────────────────────
 
@@ -420,8 +445,12 @@ tabs = st.tabs([
 with tabs[0]:
     if not detail_df.empty:
         display_df = filter_detail(detail_df.copy())
-        st.caption(f"Showing {len(display_df)} of {len(detail_df)} invoices")
-        st.dataframe(coerce_str_cols(display_df), use_container_width=True, hide_index=True, column_config=DETAIL_COL_CFG)
+        safe_dataframe(
+            coerce_str_cols(display_df),
+            column_config=DETAIL_COL_CFG,
+            empty_message="No invoices match the current filters.",
+            caption=f"Showing {len(display_df)} of {len(detail_df)} invoices",
+        )
     else:
         st.info("No invoice data available.")
 
@@ -431,10 +460,14 @@ with tabs[1]:
         df_b = r["books_raw"].copy()
         df_b["Invoice_Date"] = pd.to_datetime(df_b["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_b = apply_filters(coerce_str_cols(df_b), f_gstin, f_supplier)
-        st.caption(f"{len(df_b)} records")
-        st.dataframe(df_b, use_container_width=True, hide_index=True, column_config=STD_BOOK_CFG)
+        safe_dataframe(
+            df_b,
+            column_config=STD_BOOK_CFG,
+            empty_message="No Books data matches the current filters.",
+            caption=f"{len(df_b)} records",
+        )
     else:
-        st.info("No Books data.")
+        st.info("No Books data loaded.")
 
 # Tab 2: GSTR-2B
 with tabs[2]:
@@ -442,10 +475,14 @@ with tabs[2]:
         df_g = r["gstr_raw"].copy()
         df_g["Invoice_Date"] = pd.to_datetime(df_g["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_g = apply_filters(coerce_str_cols(df_g), f_gstin, f_supplier)
-        st.caption(f"{len(df_g)} records")
-        st.dataframe(df_g, use_container_width=True, hide_index=True, column_config=STD_BOOK_CFG)
+        safe_dataframe(
+            df_g,
+            column_config=STD_BOOK_CFG,
+            empty_message="No GSTR-2B data matches the current filters.",
+            caption=f"{len(df_g)} records",
+        )
     else:
-        st.info("No GSTR-2B data.")
+        st.info("No GSTR-2B data loaded.")
 
 # Tab 3: Missing in 2B
 with tabs[3]:
@@ -454,10 +491,14 @@ with tabs[3]:
         df_m["Invoice_Date"] = pd.to_datetime(df_m["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_m.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
         df_m = apply_filters(coerce_str_cols(df_m), f_gstin, f_supplier)
-        st.caption(f"💰 ITC at Risk: ₹{df_m['ITC'].sum():,.2f} across {len(df_m)} invoices")
-        st.dataframe(df_m, use_container_width=True, hide_index=True, column_config=MISS_CFG)
+        safe_dataframe(
+            df_m,
+            column_config=MISS_CFG,
+            empty_message="No missing invoices match the current filters.",
+            caption=f"💰 ITC at Risk: ₹{df_m['ITC'].sum():,.2f} across {len(df_m)} invoices",
+        )
     else:
-        st.success("No invoices missing in GSTR-2B.")
+        st.success("✅ No invoices missing in GSTR-2B.")
 
 # Tab 4: Missing in Books
 with tabs[4]:
@@ -466,10 +507,14 @@ with tabs[4]:
         df_mb["Invoice_Date"] = pd.to_datetime(df_mb["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_mb.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
         df_mb = apply_filters(coerce_str_cols(df_mb), f_gstin, f_supplier)
-        st.caption(f"{len(df_mb)} invoices in GSTR-2B not found in Books")
-        st.dataframe(df_mb, use_container_width=True, hide_index=True, column_config=MISS_CFG)
+        safe_dataframe(
+            df_mb,
+            column_config=MISS_CFG,
+            empty_message="No missing invoices match the current filters.",
+            caption=f"{len(df_mb)} invoices in GSTR-2B not found in Books",
+        )
     else:
-        st.success("No invoices missing in Books.")
+        st.success("✅ No invoices missing in Books.")
 
 # Tab 5: Supplier Summary
 with tabs[5]:
@@ -489,37 +534,48 @@ with tabs[5]:
         })
     if sup_rows:
         sup_df = pd.DataFrame(sup_rows).sort_values("Supplier")
+        sup_df = sup_df[sup_df["GSTIN"].str.strip().replace("nan","") != ""]
         if f_gstin:
             sup_df = sup_df[sup_df["GSTIN"].str.contains(f_gstin, case=False, na=False)]
         if f_supplier:
             sup_df = sup_df[sup_df["Supplier"].str.contains(f_supplier, case=False, na=False)]
-        st.caption(f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}")
-        st.dataframe(sup_df, use_container_width=True, hide_index=True,
+        safe_dataframe(
+            sup_df,
             column_config={
                 "GSTIN":            st.column_config.TextColumn("GSTIN",       width=180),
                 "Supplier":         st.column_config.TextColumn("Supplier",    width=280),
                 "ITC as per Books": st.column_config.NumberColumn("📚 Books",  width=140, format="%.2f"),
                 "ITC as per 2B":    st.column_config.NumberColumn("📊 GSTR-2B",width=140, format="%.2f"),
                 "ITC Difference":   st.column_config.NumberColumn("📉 Diff",   width=130, format="%.2f"),
-            })
+            },
+            empty_message="No supplier data matches the current filters.",
+            caption=f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}" if not sup_df.empty else None,
+        )
 
 # ── ZERO ITC ─────────────────────────────────────────────────────────────────
 
 if not r["no_itc"].empty:
-    st.divider()
-    st.markdown("## 🟡 Zero ITC Invoices")
     df_ni = r["no_itc"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "Invoice_Value"]].copy()
     df_ni["Invoice_Date"] = pd.to_datetime(df_ni["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
     df_ni.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "Invoice Value"]
-    st.dataframe(coerce_str_cols(df_ni), use_container_width=True, hide_index=True,
-        column_config={
-            "GSTIN":         st.column_config.TextColumn("GSTIN",          width=180),
-            "Supplier":      st.column_config.TextColumn("Supplier",       width=280),
-            "Invoice No":    st.column_config.TextColumn("Invoice No",     width=150),
-            "Date":          st.column_config.TextColumn("Date",           width=115),
-            "Taxable":       st.column_config.NumberColumn("Taxable",      width=110, format="%.2f"),
-            "Invoice Value": st.column_config.NumberColumn("Invoice Value",width=120, format="%.2f"),
-        })
+    df_ni = coerce_str_cols(df_ni)
+    df_ni = df_ni[df_ni["Invoice No"].str.strip().replace("nan", "") != ""]
+    if not df_ni.empty:
+        st.divider()
+        st.markdown("## 🟡 Zero ITC Invoices")
+        safe_dataframe(
+            df_ni,
+            column_config={
+                "GSTIN":         st.column_config.TextColumn("GSTIN",          width=180),
+                "Supplier":      st.column_config.TextColumn("Supplier",       width=280),
+                "Invoice No":    st.column_config.TextColumn("Invoice No",     width=150),
+                "Date":          st.column_config.TextColumn("Date",           width=115),
+                "Taxable":       st.column_config.NumberColumn("Taxable",      width=110, format="%.2f"),
+                "Invoice Value": st.column_config.NumberColumn("Invoice Value",width=120, format="%.2f"),
+            },
+            empty_message="No zero ITC invoices.",
+            caption=f"{len(df_ni)} invoices with zero tax",
+        )
 
 # ── EXCEL EXPORT HELPERS ──────────────────────────────────────────────────────
 
