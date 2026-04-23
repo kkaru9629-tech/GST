@@ -126,7 +126,9 @@ def safe_dataframe(df, column_config=None, empty_message="No data to display", c
     # Drop rows where Invoice_No / GSTIN are blank placeholders
     for col in ["Invoice_No", "Invoice No"]:
         if col in df.columns:
-            df = df[df[col].astype(str).str.strip().replace("nan", "") != ""]
+            mask = df[col].astype(str).str.strip().str.lower() != "nan"
+            mask = mask & (df[col].astype(str).str.strip() != "")
+            df = df[mask]
     if df.empty:
         st.info(empty_message)
         return False
@@ -242,10 +244,10 @@ def fmt_date(val) -> str:
         return ""
 
 def coerce_str_cols(df: pd.DataFrame) -> pd.DataFrame:
-    """Ensure every object-dtype cell is a plain string (prevents Streamlit join errors)."""
+    """Convert only truly missing values (None/NaN) to empty strings. Real data is untouched."""
     df = df.copy()
     for col in df.select_dtypes(include=["object"]).columns:
-        df[col] = df[col].apply(lambda v: "" if (v is None or (isinstance(v, float) and not isinstance(v, bool))) else str(v))
+        df[col] = df[col].apply(lambda v: "" if (v is None or pd.isna(v)) else str(v))
     return df
 
 def apply_filters(df: pd.DataFrame, f_gstin: str, f_supplier: str) -> pd.DataFrame:
@@ -559,7 +561,11 @@ if not r["no_itc"].empty:
     df_ni["Invoice_Date"] = pd.to_datetime(df_ni["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
     df_ni.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "Invoice Value"]
     df_ni = coerce_str_cols(df_ni)
-    df_ni = df_ni[df_ni["Invoice No"].str.strip().replace("nan", "") != ""]
+    df_ni = df_ni[
+        (df_ni["Invoice No"].astype(str).str.strip() != "") &
+        (df_ni["Invoice No"].astype(str).str.strip().str.lower() != "nan") &
+        (df_ni["Invoice Value"].astype(float) > 0)
+    ]
     if not df_ni.empty:
         st.divider()
         st.markdown("## 🟡 Zero ITC Invoices")
