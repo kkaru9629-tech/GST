@@ -111,53 +111,129 @@ def _find_tally_hdr(df):
             return i
     return 5
 
+def _map_tally_columns(header_row_values: list) -> dict:
+    """Scan header row, return field→col_index mapping. Falls back to verified defaults."""
+    defaults = {
+        'date': 0, 'particulars': 1, 'inv_no': 3, 'gstin': 4,
+        'gross_total': 8,
+        'itc_nr_cgst': 11, 'itc_nr_sgst': 12,
+        'purchases': 13,
+        'input_cgst': 14, 'input_sgst': 15,
+        'input_igst': 18,
+        'tds_prof': 21, 'tds_rent': 23,
+    }
+    found = {}
+    for idx, val in enumerate(header_row_values):
+        v = _s(val).lower()
+        if not v or v in ('nan', 'none', ''):
+            continue
+        if v == 'date':
+            found['date'] = idx
+        elif 'particulars' in v:
+            found['particulars'] = idx
+        elif 'supplier invoice' in v:
+            found['inv_no'] = idx
+        elif 'gstin' in v and 'uin' in v:
+            found['gstin'] = idx
+        elif v == 'gross total':
+            found['gross_total'] = idx
+        elif 'itc not reflecting' in v and 'cgst' in v:
+            found['itc_nr_cgst'] = idx
+        elif 'itc not reflecting' in v and 'sgst' in v:
+            found['itc_nr_sgst'] = idx
+        elif v == 'purchases':
+            found['purchases'] = idx
+        elif 'input cgst' in v:
+            found['input_cgst'] = idx
+        elif 'input sgst' in v:
+            found['input_sgst'] = idx
+        elif 'input igst' in v:
+            found['input_igst'] = idx
+        elif 'tds on profession' in v or ('tds' in v and '194j' in v):
+            found['tds_prof'] = idx
+        elif 'tds on rent' in v or ('tds' in v and '194i' in v):
+            found['tds_rent'] = idx
+    return {**defaults, **found}
+
 def parse_tally_purchase_register(raw_df):
     logger.info('Parsing Tally Purchase Register...')
     hdr_row = _find_tally_hdr(raw_df)
     logger.info(f'Header at row {hdr_row}')
+
+    cm = _map_tally_columns(raw_df.iloc[hdr_row].tolist())
+    logger.info(f'Tally column map: {cm}')
+
     records = []
-    for ri in range(hdr_row+1, len(raw_df)):
+    for ri in range(hdr_row + 1, len(raw_df)):
         row = raw_df.iloc[ri].tolist()
-        name = _s(row[1]) if len(row)>1 else ''
-        if not name or name.lower() in ('','nan','none','grand total','total'): continue
-        gross = _f(row[8]) if len(row)>8 else 0.0
-        if gross == 0.0: continue
 
-        cgst = _f(row[14]) if len(row)>14 else 0.0
-        if cgst == 0.0: cgst = _f(row[11]) if len(row)>11 else 0.0
-        sgst = _f(row[15]) if len(row)>15 else 0.0
-        if sgst == 0.0: sgst = _f(row[12]) if len(row)>12 else 0.0
-        igst = _f(row[18]) if len(row)>18 else 0.0
+        def gc(field):
+            idx = cm.get(field, -1)
+            return _f(row[idx]) if 0 <= idx < len(row) else 0.0
 
-        # Intra-state rule: SGST always equals CGST for intra-state (IGST=0) purchases
-        if cgst > 0.0 and sgst == 0.0 and igst == 0.0:
+        def gs(field):
+            idx = cm.get(field, -1)
+            return _s(row[idx]) if 0 <= idx < len(row) else ''
+
+        name = gs('particulars')
+        if not name or name.lower() in ('', 'nan', 'none', 'grand total', 'total'):
+            continue
+        gross = gc('gross_total')
+        if gross == 0.0:
+            continue
+
+        cgst      = gc('input_cgst') or gc('itc_nr_cgst')
+        sgst_main = gc('input_sgst')
+        sgst_nr   = gc('itc_nr_sgst')
+        sgst      = sgst_main if sgst_main != 0.0 else sgst_nr
+        igst      = gc('input_igst')
+
+        # Intra-state rule: infer SGST = CGST ONLY when BOTH SGST source columns
+        # were genuinely empty (not zero-entered) and IGST is also absent.
+        if cgst > 0.0 and igst == 0.0 and sgst_main == 0.0 and sgst_nr == 0.0:
             sgst = cgst
 
-        tds = (_f(row[21]) if len(row)>21 else 0.0) + (_f(row[23]) if len(row)>23 else 0.0)
-        inv_val  = gross + tds
-        taxable  = max(inv_val - cgst - sgst - igst, 0.0)
+        tds       = gc('tds_prof') + gc('tds_rent')
+        inv_val   = gross + tds
+        taxable   = max(inv_val - cgst - sgst - igst, 0.0)
         total_tax = cgst + sgst + igst
 
-        gstin  = _s(row[4]).upper()  if len(row)>4 else ''
-        inv_no = _s(row[3])          if len(row)>3 else ''
-        d_raw  = row[0]              if len(row)>0 else None
+        gstin  = gs('gstin').upper()
+        inv_no = gs('inv_no')
+        d_raw  = row[cm.get('date', 0)] if cm.get('date', 0) < len(row) else None
 
         # Parse date
         try:
-            if hasattr(d_raw,'year'): inv_date = pd.Timestamp(d_raw)
-            elif d_raw is None or (isinstance(d_raw,float) and np.isnan(d_raw)): inv_date = pd.NaT
-            else: inv_date = pd.to_datetime(_s(d_raw), dayfirst=True, errors='coerce')
-        except: inv_date = pd.NaT
+            if hasattr(d_raw, 'year'):
+                inv_date = pd.Timestamp(d_raw)
+            elif d_raw is None or (isinstance(d_raw, float) and np.isnan(d_raw)):
+                inv_date = pd.NaT
+            else:
+                inv_date = pd.to_datetime(_s(d_raw), dayfirst=True, errors='coerce')
+        except Exception:
+            inv_date = pd.NaT
 
-        records.append({'GSTIN':gstin,'Trade_Name':name,'Invoice_No':inv_no,
-            'Invoice_Date':inv_date,'Taxable_Value':round(taxable,2),
-            'CGST':round(cgst,2),'SGST':round(sgst,2),'IGST':round(igst,2),
-            'CESS':0.0,'TOTAL_TAX':round(total_tax,2),'Invoice_Value':round(inv_val,2)})
+        records.append({
+            'GSTIN':         gstin,
+            'Trade_Name':    name,
+            'Invoice_No':    inv_no,
+            'Invoice_Date':  inv_date,
+            'Taxable_Value': round(taxable, 2),
+            'CGST':          round(cgst, 2),
+            'SGST':          round(sgst, 2),
+            'IGST':          round(igst, 2),
+            'CESS':          0.0,
+            'TOTAL_TAX':     round(total_tax, 2),
+            'Invoice_Value': round(inv_val, 2),
+        })
 
     if not records:
-        raise ValueError('Tally Purchase Register: no data rows found.')
+        raise ValueError(
+            'Tally Purchase Register: no data rows found. '
+            'Ensure the file contains Purchase Register data with a Gross Total column.'
+        )
     df = pd.DataFrame(records)
-    logger.info(f'Tally PR: {len(df)} rows')
+    logger.info(f'Tally PR: {len(df)} rows extracted')
     return _validate_books_df(df)
 
 # ── GSTR-2B Excel parser ──────────────────────────────────────────────────────
@@ -166,30 +242,42 @@ def parse_tally_purchase_register(raw_df):
 #  8=Taxable  9=IGST  10=CGST  11=SGST  12=CESS
 
 def _find_gstr2b_start(df):
+    """Find first row containing a valid GSTIN in col 0 or col 1."""
     for i in range(min(20, len(df))):
-        v = _s(df.iloc[i,0]).upper()
-        if v and GSTIN_PATTERN.match(v): return i
+        for ci in [0, 1]:
+            if df.shape[1] > ci:
+                v = _s(df.iloc[i, ci]).upper()
+                if v and GSTIN_PATTERN.match(v):
+                    return i
     return 6
+
+def _gstr2b_col_offset(raw_df, start_row):
+    """Detect whether GSTIN is in column 0 or column 1 (some portals add a blank col A)."""
+    row = raw_df.iloc[start_row].tolist() if start_row < len(raw_df) else []
+    if len(row) > 0 and GSTIN_PATTERN.match(_s(row[0]).upper()):
+        return 0
+    return 1  # GSTIN is in col 1 (B)
 
 def parse_gstr2b_excel(raw_df):
     logger.info('Parsing GSTR-2B Excel...')
     start = _find_gstr2b_start(raw_df)
-    logger.info(f'Data starts at row {start}')
+    off   = _gstr2b_col_offset(raw_df, start)
+    logger.info(f'Data starts at row {start}, GSTIN column offset={off}')
     records = []
     for ri in range(start, len(raw_df)):
         row = raw_df.iloc[ri].tolist()
-        gstin = _s(row[0]).upper() if len(row)>0 else ''
+        gstin = _s(row[off+0]).upper() if len(row)>off+0 else ''
         if not gstin or not GSTIN_PATTERN.match(gstin): continue
 
-        inv_no  = _s(row[2])                if len(row)>2  else ''
-        d_raw   = row[4]                    if len(row)>4  else None
-        inv_val = _f(row[5])               if len(row)>5  else 0.0
-        taxable = _f(row[8])               if len(row)>8  else 0.0
-        igst    = _f(row[9])               if len(row)>9  else 0.0
-        cgst    = _f(row[10])              if len(row)>10 else 0.0
-        sgst    = _f(row[11])              if len(row)>11 else 0.0
-        cess    = _f(row[12])              if len(row)>12 else 0.0
-        name    = _s(row[1])               if len(row)>1  else ''
+        inv_no  = _s(row[off+2])  if len(row)>off+2  else ''
+        d_raw   = row[off+4]      if len(row)>off+4  else None
+        inv_val = _f(row[off+5])  if len(row)>off+5  else 0.0
+        taxable = _f(row[off+8])  if len(row)>off+8  else 0.0
+        igst    = _f(row[off+9])  if len(row)>off+9  else 0.0
+        cgst    = _f(row[off+10]) if len(row)>off+10 else 0.0
+        sgst    = _f(row[off+11]) if len(row)>off+11 else 0.0
+        cess    = _f(row[off+12]) if len(row)>off+12 else 0.0
+        name    = _s(row[off+1])  if len(row)>off+1  else ''
 
         try:
             if hasattr(d_raw,'year'): inv_date = pd.Timestamp(d_raw)
@@ -250,8 +338,8 @@ def _row_to_issue(row):
 
 def _validate_books_df(df):
     df_t = df.copy()
-    df_t['GSTIN']        = df_t['GSTIN'].fillna('').astype(str)
-    df_t['Invoice_No']   = df_t['Invoice_No'].fillna('').astype(str)
+    df_t['GSTIN']        = df_t['GSTIN'].apply(lambda v: '' if (v is None or (isinstance(v,float) and np.isnan(v))) else str(v).strip())
+    df_t['Invoice_No']   = df_t['Invoice_No'].apply(lambda v: '' if (v is None or (isinstance(v,float) and np.isnan(v))) else str(v).strip())
     df_t['Invoice_Date'] = pd.to_datetime(df_t['Invoice_Date'],errors='coerce').fillna(pd.Timestamp('1900-01-01'))
     dup_cols = ['GSTIN','Invoice_No','Invoice_Date','Taxable_Value','CGST','SGST','IGST','CESS']
     fdm = df_t.duplicated(subset=dup_cols, keep=False)
@@ -304,8 +392,8 @@ def group_invoices(df):
 def detect_duplicate_invoices(df, source):
     if df.empty: return df, pd.DataFrame(), pd.DataFrame()
     dt = df.copy()
-    dt['GSTIN']      = dt['GSTIN'].fillna('').astype(str)
-    dt['Invoice_No'] = dt['Invoice_No'].fillna('').astype(str)
+    dt['GSTIN']      = dt['GSTIN'].apply(lambda v: '' if (v is None or (isinstance(v,float) and np.isnan(v))) else str(v).strip())
+    dt['Invoice_No'] = dt['Invoice_No'].apply(lambda v: '' if (v is None or (isinstance(v,float) and np.isnan(v))) else str(v).strip())
     mask = dt.duplicated(subset=['GSTIN','Invoice_No'], keep=False)
     dr = df[mask].copy()
     label = 'Duplicate Invoice in Books' if source=='books' else 'Duplicate Invoice in GSTR-2B'
@@ -320,6 +408,7 @@ def level1_strict_match(g, b):
     g=g.copy(); b=b.copy()
     g['K']=[_key(r['GSTIN'],r['Invoice_No'],r['Invoice_Date']) for _,r in g.iterrows()]
     b['K']=[_key(r['GSTIN'],r['Invoice_No'],r['Invoice_Date']) for _,r in b.iterrows()]
+    g['K']=g['K'].astype(str); b['K']=b['K'].astype(str)
     ks=set(g['K'])&set(b['K'])
     m=pd.merge(g[g['K'].isin(ks)],b[b['K'].isin(ks)],on='K',suffixes=('_2B','_Books'))
     logger.info(f'L1:{len(m)} matched')
@@ -330,6 +419,7 @@ def level2_normalized_match(g, b, tol):
     g=g.copy(); b=b.copy()
     g['NK']=[_key(r['GSTIN'],normalize_invoice_number(_s(r['Invoice_No'])),r['Invoice_Date']) for _,r in g.iterrows()]
     b['NK']=[_key(r['GSTIN'],normalize_invoice_number(_s(r['Invoice_No'])),r['Invoice_Date']) for _,r in b.iterrows()]
+    g['NK']=g['NK'].astype(str); b['NK']=b['NK'].astype(str)
     ks=set(g['NK'])&set(b['NK'])
     if not ks: return pd.DataFrame(),g.drop(columns=['NK'],errors='ignore'),b.drop(columns=['NK'],errors='ignore'),set()
     m=pd.merge(g[g['NK'].isin(ks)],b[b['NK'].isin(ks)],on='NK',suffixes=('_2B','_Books')).drop(columns=['NK'],errors='ignore')
