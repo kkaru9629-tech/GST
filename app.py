@@ -1,6 +1,6 @@
 """
 GST Reconciliation App
-Version: 8.1 — Zero-flood fix + Dynamic tabs
+Version: 8.2 — Final Zero Fix (Numeric First, String Last)
 """
 
 import streamlit as st
@@ -79,17 +79,9 @@ st.markdown("""
         border-radius: 4px;
         margin: 1rem 0;
     }
-    .filter-section {
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin: 12px 0;
-    }
     .stTabs [data-baseweb="tab-list"] { gap: 2px; }
     .stTabs [data-baseweb="tab"]      { padding: 8px 16px; }
     .streamlit-expanderHeader          { font-size: 1rem !important; }
-    .download-row { display:flex; gap:12px; margin-top:16px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -418,360 +410,197 @@ MISS_CFG = {
 tab_labels = []
 tab_callbacks = []
 
-# Invoice Details
 if not detail_df.empty:
     tab_labels.append("📋 Invoice Details")
-    def _render_invoice_details():
+    def _rinv():
         display_df = filter_detail(detail_df.copy())
-        safe_dataframe(
-            coerce_str_cols(display_df),
-            column_config=DETAIL_COL_CFG,
-            empty_message="No invoices match the current filters.",
-            caption=f"Showing {len(display_df)} of {len(detail_df)} invoices",
-        )
-    tab_callbacks.append(_render_invoice_details)
+        safe_dataframe(coerce_str_cols(display_df), DETAIL_COL_CFG,
+                      "No invoices match filters.", f"Showing {len(display_df)} of {len(detail_df)} invoices")
+    tab_callbacks.append(_rinv)
 
-# Books
 if not r["books_raw"].empty:
     tab_labels.append("📚 Books")
-    def _render_books():
+    def _rb():
         df_b = r["books_raw"].copy()
         df_b["Invoice_Date"] = pd.to_datetime(df_b["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_b = apply_filters(coerce_str_cols(df_b), f_gstin, f_supplier)
-        safe_dataframe(df_b, column_config=STD_BOOK_CFG,
-                      empty_message="No Books data matches filters.",
-                      caption=f"{len(df_b)} records")
-    tab_callbacks.append(_render_books)
+        safe_dataframe(df_b, STD_BOOK_CFG, "No Books data matches filters.", f"{len(df_b)} records")
+    tab_callbacks.append(_rb)
 
-# GSTR-2B
 if not r["gstr_raw"].empty:
     tab_labels.append("📊 GSTR-2B")
-    def _render_gstr():
+    def _rg():
         df_g = r["gstr_raw"].copy()
         df_g["Invoice_Date"] = pd.to_datetime(df_g["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
         df_g = apply_filters(coerce_str_cols(df_g), f_gstin, f_supplier)
-        safe_dataframe(df_g, column_config=STD_BOOK_CFG,
-                      empty_message="No GSTR-2B data matches filters.",
-                      caption=f"{len(df_g)} records")
-    tab_callbacks.append(_render_gstr)
+        safe_dataframe(df_g, STD_BOOK_CFG, "No GSTR-2B data matches filters.", f"{len(df_g)} records")
+    tab_callbacks.append(_rg)
 
-# Missing in 2B
 if not r["missing_2b"].empty:
     tab_labels.append("❌ Missing in GSTR-2B")
-    def _render_miss2b():
-        df_m = r["missing_2b"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]].copy()
+    def _rm2():
+        df_m = r["missing_2b"][["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","TOTAL_TAX"]].copy()
         df_m["Invoice_Date"] = pd.to_datetime(df_m["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
-        df_m.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
+        df_m.columns = ["GSTIN","Supplier","Invoice No","Date","Taxable","ITC"]
         df_m = apply_filters(coerce_str_cols(df_m), f_gstin, f_supplier)
-        safe_dataframe(df_m, column_config=MISS_CFG,
-                      empty_message="No missing invoices match filters.",
-                      caption=f"💰 ITC at Risk: ₹{df_m['ITC'].sum():,.2f} across {len(df_m)} invoices")
-    tab_callbacks.append(_render_miss2b)
+        safe_dataframe(df_m, MISS_CFG, "No missing invoices match filters.",
+                      f"💰 ITC at Risk: ₹{df_m['ITC'].sum():,.2f} across {len(df_m)} invoices")
+    tab_callbacks.append(_rm2)
 
-# Missing in Books
 if not r["missing_books"].empty:
     tab_labels.append("📕 Missing in Books")
-    def _render_missbooks():
-        df_mb = r["missing_books"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]].copy()
+    def _rmb():
+        df_mb = r["missing_books"][["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","TOTAL_TAX"]].copy()
         df_mb["Invoice_Date"] = pd.to_datetime(df_mb["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
-        df_mb.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
+        df_mb.columns = ["GSTIN","Supplier","Invoice No","Date","Taxable","ITC"]
         df_mb = apply_filters(coerce_str_cols(df_mb), f_gstin, f_supplier)
-        safe_dataframe(df_mb, column_config=MISS_CFG,
-                      empty_message="No missing invoices match filters.",
-                      caption=f"{len(df_mb)} invoices in GSTR-2B not found in Books")
-    tab_callbacks.append(_render_missbooks)
+        safe_dataframe(df_mb, MISS_CFG, "No missing invoices match filters.",
+                      f"{len(df_mb)} invoices in GSTR-2B not found in Books")
+    tab_callbacks.append(_rmb)
 
-# Supplier Summary
 if not r["books_raw"].empty or not r["gstr_raw"].empty:
     tab_labels.append("📋 Supplier Summary")
-    def _render_supplier():
+    def _rsup():
         all_gstins = set()
         if not r["books_raw"].empty: all_gstins.update(r["books_raw"]["GSTIN"].unique())
         if not r["gstr_raw"].empty:  all_gstins.update(r["gstr_raw"]["GSTIN"].unique())
         sup_rows = []
         for gstin in all_gstins:
-            ib = r["books_raw"][r["books_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum() if not r["books_raw"].empty else 0
-            ig = r["gstr_raw"][r["gstr_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum()   if not r["gstr_raw"].empty  else 0
-            sup_rows.append({
-                "GSTIN": str(gstin), "Supplier": str(trade_name_map.get(gstin, "Unknown")),
-                "ITC as per Books": round(float(ib), 2), "ITC as per 2B": round(float(ig), 2),
-                "ITC Difference": round(float(ig) - float(ib), 2),
-            })
+            ib = r["books_raw"][r["books_raw"]["GSTIN"]==gstin]["TOTAL_TAX"].sum() if not r["books_raw"].empty else 0
+            ig = r["gstr_raw"][r["gstr_raw"]["GSTIN"]==gstin]["TOTAL_TAX"].sum() if not r["gstr_raw"].empty else 0
+            sup_rows.append({"GSTIN":str(gstin),"Supplier":str(trade_name_map.get(gstin,"Unknown")),
+                            "ITC as per Books":round(float(ib),2),"ITC as per 2B":round(float(ig),2),
+                            "ITC Difference":round(float(ig)-float(ib),2)})
         if sup_rows:
             sup_df = pd.DataFrame(sup_rows).sort_values("Supplier")
-            sup_df = sup_df[sup_df["GSTIN"].str.strip().str.lower().replace("nan","") != ""]
-            if f_gstin: sup_df = sup_df[sup_df["GSTIN"].str.contains(f_gstin, case=False, na=False)]
-            if f_supplier: sup_df = sup_df[sup_df["Supplier"].str.contains(f_supplier, case=False, na=False)]
-            safe_dataframe(sup_df, column_config={
-                "GSTIN": st.column_config.TextColumn("GSTIN", width=180),
-                "Supplier": st.column_config.TextColumn("Supplier", width=280),
-                "ITC as per Books": st.column_config.NumberColumn("📚 Books", width=140, format="%.2f"),
-                "ITC as per 2B": st.column_config.NumberColumn("📊 GSTR-2B", width=140, format="%.2f"),
-                "ITC Difference": st.column_config.NumberColumn("📉 Diff", width=130, format="%.2f"),
-            }, empty_message="No supplier data matches filters.",
-            caption=f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}")
-    tab_callbacks.append(_render_supplier)
+            sup_df = sup_df[sup_df["GSTIN"].str.strip().str.lower().replace("nan","")!=""]
+            if f_gstin: sup_df = sup_df[sup_df["GSTIN"].str.contains(f_gstin,case=False,na=False)]
+            if f_supplier: sup_df = sup_df[sup_df["Supplier"].str.contains(f_supplier,case=False,na=False)]
+            safe_dataframe(sup_df, {
+                "GSTIN":st.column_config.TextColumn("GSTIN",width=180),
+                "Supplier":st.column_config.TextColumn("Supplier",width=280),
+                "ITC as per Books":st.column_config.NumberColumn("📚 Books",width=140,format="%.2f"),
+                "ITC as per 2B":st.column_config.NumberColumn("📊 GSTR-2B",width=140,format="%.2f"),
+                "ITC Difference":st.column_config.NumberColumn("📉 Diff",width=130,format="%.2f"),
+            }, "No supplier data.", f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}")
+    tab_callbacks.append(_rsup)
 
-# Render tabs
 if tab_labels:
     tabs = st.tabs(tab_labels)
-    for tab, callback in zip(tabs, tab_callbacks):
-        with tab:
-            callback()
-else:
-    st.info("No data available to display in any tab.")
+    for tab, cb in zip(tabs, tab_callbacks):
+        with tab: cb()
 
-# ── ZERO ITC ─────────────────────────────────────────────────────────────────
+# ── ZERO ITC (FIXED: Numeric First, String Last) ─────────────────────────────
 
 if not r["no_itc"].empty:
-    df_ni = r["no_itc"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "Invoice_Value"]].copy()
-    df_ni["Invoice_Date"] = pd.to_datetime(df_ni["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
-    df_ni.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "Invoice Value"]
-    df_ni = coerce_str_cols(df_ni)
+    df_ni = r["no_itc"][["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","Invoice_Value"]].copy()
+
+    # STEP 1: Convert numeric columns safely
+    df_ni["Invoice_Value"] = pd.to_numeric(df_ni["Invoice_Value"], errors="coerce")
+    df_ni["Taxable_Value"] = pd.to_numeric(df_ni["Taxable_Value"], errors="coerce")
+
+    # STEP 2: Remove junk rows BEFORE string conversion
     df_ni = df_ni[
-        (df_ni["Invoice No"].astype(str).str.strip() != "") &
-        (df_ni["Invoice No"].astype(str).str.strip().str.lower() != "nan") &
-        (df_ni["Invoice Value"].astype(float) > 0)
+        (df_ni["Invoice_No"].astype(str).str.strip() != "") &
+        (df_ni["Invoice_No"].astype(str).str.strip().str.lower() != "nan") &
+        (df_ni["Invoice_Value"].notna()) &
+        (df_ni["Invoice_Value"] > 0)
     ]
+
     if not df_ni.empty:
-        st.divider()
-        st.markdown("## 🟡 Zero ITC Invoices")
-        safe_dataframe(
-            df_ni,
-            column_config={
-                "GSTIN":         st.column_config.TextColumn("GSTIN",          width=180),
-                "Supplier":      st.column_config.TextColumn("Supplier",       width=280),
-                "Invoice No":    st.column_config.TextColumn("Invoice No",     width=150),
-                "Date":          st.column_config.TextColumn("Date",           width=115),
-                "Taxable":       st.column_config.NumberColumn("Taxable",      width=110, format="%.2f"),
-                "Invoice Value": st.column_config.NumberColumn("Invoice Value",width=120, format="%.2f"),
-            },
-            empty_message="No zero ITC invoices.",
-            caption=f"{len(df_ni)} invoices with zero tax",
-        )
+        # STEP 3: Format date AFTER filtering
+        df_ni["Invoice_Date"] = pd.to_datetime(df_ni["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
 
-# ── EXCEL EXPORT HELPERS ──────────────────────────────────────────────────────
+        # STEP 4: Rename columns
+        df_ni.columns = ["GSTIN","Supplier","Invoice No","Date","Taxable","Invoice Value"]
 
-def _build_workbook_formats(wb):
-    return {
-        "title":  wb.add_format({'bold': True, 'font_size': 14, 'font_name': 'Aptos Narrow'}),
-        "header": wb.add_format({'bold': True, 'font_name': 'Aptos Narrow',
-                                  'font_color': 'white', 'bg_color': '#1F4E78',
-                                  'align': 'center', 'valign': 'vcenter', 'border': 1}),
-        "number": wb.add_format({'font_name': 'Aptos Narrow', 'num_format': '#,##0.00'}),
-        "date":   wb.add_format({'font_name': 'Aptos Narrow', 'num_format': 'dd-mmm-yyyy'}),
-        "text":   wb.add_format({'font_name': 'Aptos Narrow'}),
-    }
+        # STEP 5: String conversion LAST (only for display)
+        df_ni = coerce_str_cols(df_ni)
 
-def _write_sheet(ws, title, headers, data_rows, col_types, fmts):
-    ws.write(0, 0, title, fmts["title"])
-    ws.set_row(1, 20)
-    for ci, h in enumerate(headers):
-        ws.write(1, ci, h, fmts["header"])
-    for ri, row_data in enumerate(data_rows):
-        for ci, val in enumerate(row_data):
-            ct = col_types.get(headers[ci], "text")
-            if ct == "date" and pd.notna(val):
+        # STEP 6: Final safety cleanup
+        df_ni = df_ni.drop_duplicates()
+        df_ni = df_ni[
+            (df_ni["Invoice No"] != "") &
+            (df_ni["Invoice No"].str.lower() != "nan")
+        ]
+
+        if not df_ni.empty:
+            st.divider()
+            st.markdown("## 🟡 Zero ITC Invoices")
+            safe_dataframe(df_ni, {
+                "GSTIN": st.column_config.TextColumn("GSTIN", width=180),
+                "Supplier": st.column_config.TextColumn("Supplier", width=280),
+                "Invoice No": st.column_config.TextColumn("Invoice No", width=150),
+                "Date": st.column_config.TextColumn("Date", width=115),
+                "Taxable": st.column_config.NumberColumn("Taxable", width=110, format="%.2f"),
+                "Invoice Value": st.column_config.NumberColumn("Invoice Value", width=120, format="%.2f"),
+            }, empty_message="No zero ITC invoices.", caption=f"{len(df_ni)} invoices with zero tax")
+
+# ── EXCEL EXPORT ──────────────────────────────────────────────────────────────
+
+def _bf(wb):
+    return {"title":wb.add_format({'bold':True,'font_size':14,'font_name':'Aptos Narrow'}),
+            "header":wb.add_format({'bold':True,'font_name':'Aptos Narrow','font_color':'white','bg_color':'#1F4E78','align':'center','valign':'vcenter','border':1}),
+            "number":wb.add_format({'font_name':'Aptos Narrow','num_format':'#,##0.00'}),
+            "date":wb.add_format({'font_name':'Aptos Narrow','num_format':'dd-mmm-yyyy'}),
+            "text":wb.add_format({'font_name':'Aptos Narrow'})}
+
+def _ws(ws,title,headers,data_rows,col_types,fmts):
+    ws.write(0,0,title,fmts["title"]); ws.set_row(1,20)
+    for ci,h in enumerate(headers): ws.write(1,ci,h,fmts["header"])
+    for ri,rd in enumerate(data_rows):
+        for ci,val in enumerate(rd):
+            ct=col_types.get(headers[ci],"text")
+            if ct=="date" and pd.notna(val):
                 try:
-                    dt = pd.to_datetime(val)
-                    ws.write_datetime(ri+2, ci, dt.to_pydatetime(), fmts["date"]) if not pd.isna(dt) else \
-                        safe_write_text(ws, ri+2, ci, "", fmts["text"])
-                except Exception:
-                    safe_write_text(ws, ri+2, ci, str(val) if pd.notna(val) else "", fmts["text"])
-            elif ct == "number":
-                safe_write_number(ws, ri+2, ci, val, fmts["number"])
-            else:
-                safe_write_text(ws, ri+2, ci, val, fmts["text"])
-    for ci, h in enumerate(headers):
-        ct = col_types.get(h, "text")
-        ws.set_column(ci, ci, 15 if ct in ("date","number") else 22,
-                      fmts["date"] if ct=="date" else fmts["number"] if ct=="number" else fmts["text"])
-    ws.freeze_panes(2, 0)
-    ws.autofit()
+                    dt=pd.to_datetime(val)
+                    ws.write_datetime(ri+2,ci,dt.to_pydatetime(),fmts["date"]) if not pd.isna(dt) else safe_write_text(ws,ri+2,ci,"",fmts["text"])
+                except: safe_write_text(ws,ri+2,ci,str(val) if pd.notna(val) else "",fmts["text"])
+            elif ct=="number": safe_write_number(ws,ri+2,ci,val,fmts["number"])
+            else: safe_write_text(ws,ri+2,ci,val,fmts["text"])
+    for ci,h in enumerate(headers):
+        ct=col_types.get(h,"text")
+        ws.set_column(ci,ci,15 if ct in("date","number") else 22,fmts["date"] if ct=="date" else fmts["number"] if ct=="number" else fmts["text"])
+    ws.freeze_panes(2,0); ws.autofit()
 
-BOOK_CT = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date",
-           "Taxable_Value":"number","CGST":"number","SGST":"number","IGST":"number",
-           "CESS":"number","TOTAL_TAX":"number","Invoice_Value":"number"}
-MISS_CT  = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date",
-            "Taxable_Value":"number","TOTAL_TAX":"number"}
-
-# ── FULL EXCEL REPORT ─────────────────────────────────────────────────────────
+BOOK_CT={"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date","Taxable_Value":"number","CGST":"number","SGST":"number","IGST":"number","CESS":"number","TOTAL_TAX":"number","Invoice_Value":"number"}
+MISS_CT={"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date","Taxable_Value":"number","TOTAL_TAX":"number"}
 
 st.divider()
-col_dl1, col_dl2 = st.columns(2)
+cd1,cd2=st.columns(2)
 
-with col_dl1:
-    full_output = io.BytesIO()
-    with pd.ExcelWriter(full_output, engine="xlsxwriter") as writer:
-        wb   = writer.book
-        fmts = _build_workbook_formats(wb)
+with cd1:
+    fo=io.BytesIO()
+    with pd.ExcelWriter(fo,engine="xlsxwriter") as w:
+        wb=w.book; fmts=_bf(wb)
+        sd=post_processing_cleaner(pd.DataFrame({"Particulars":["ITC - Books","ITC - GSTR-2B","Difference","ITC at Risk","Match %","Total Books","Total GSTR","Matched","Tax Diff","Missing 2B","Missing Books"],"Value":[s["ITC_Books"],s["ITC_GSTR"],s["ITC_Diff"],s["ITC_at_Risk"],s["Match_%"],s["Total_Books"],s["Total_GSTR"],s["Matched"],s["Tax_Diff"],s["Missing_2B"],s["Missing_Books"]]}))
+        _ws(wb.add_worksheet("Summary"),"Reconciliation Summary",list(sd.columns),sd.values.tolist(),{"Particulars":"text","Value":"number"},fmts)
+        if not r["books_raw"].empty: _ws(wb.add_worksheet("Books"),"Books Data",list(r["books_raw"].columns),post_processing_cleaner(r["books_raw"].copy()).values.tolist(),BOOK_CT,fmts)
+        if not r["gstr_raw"].empty: _ws(wb.add_worksheet("GSTR-2B"),"GSTR-2B Data",list(r["gstr_raw"].columns),post_processing_cleaner(r["gstr_raw"].copy()).values.tolist(),BOOK_CT,fmts)
+        if not r["missing_2b"].empty: _ws(wb.add_worksheet("Missing in 2B"),"Missing in 2B",list(MISS_CT),post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy()).values.tolist(),MISS_CT,fmts)
+        if not r["missing_books"].empty: _ws(wb.add_worksheet("Missing in Books"),"Missing in Books",list(MISS_CT),post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy()).values.tolist(),MISS_CT,fmts)
+        if not r["no_itc"].empty: _ws(wb.add_worksheet("NO ITC"),"Zero ITC Invoices",["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","Invoice_Value"],post_processing_cleaner(r["no_itc"][["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","Invoice_Value"]].copy()).values.tolist(),{"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date","Taxable_Value":"number","Invoice_Value":"number"},fmts)
+    fo.seek(0)
+    st.download_button("📥 Download Full Report",data=fo,file_name=f"reconciliation_{datetime.now().strftime('%Y%m%d')}.xlsx",mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",use_container_width=True)
 
-        summary_df = post_processing_cleaner(pd.DataFrame({
-            "Particulars": ["ITC - Books","ITC - GSTR-2B","Difference","ITC at Risk","Match %",
-                            "Total Books","Total GSTR","Matched","Tax Diff","Missing 2B","Missing Books"],
-            "Value":       [s["ITC_Books"],s["ITC_GSTR"],s["ITC_Diff"],s["ITC_at_Risk"],s["Match_%"],
-                            s["Total_Books"],s["Total_GSTR"],s["Matched"],s["Tax_Diff"],
-                            s["Missing_2B"],s["Missing_Books"]],
-        }))
-        ws_s = wb.add_worksheet("Summary")
-        _write_sheet(ws_s, "Reconciliation Summary", list(summary_df.columns),
-                     summary_df.values.tolist(), {"Particulars":"text","Value":"number"}, fmts)
-
-        if not r["books_raw"].empty:
-            bdf = post_processing_cleaner(r["books_raw"].copy())
-            _write_sheet(wb.add_worksheet("Books"), "Books Data",
-                         list(bdf.columns), bdf.values.tolist(), BOOK_CT, fmts)
-
-        if not r["gstr_raw"].empty:
-            gdf = post_processing_cleaner(r["gstr_raw"].copy())
-            _write_sheet(wb.add_worksheet("GSTR-2B"), "GSTR-2B Data",
-                         list(gdf.columns), gdf.values.tolist(), BOOK_CT, fmts)
-
-        if not r["missing_2b"].empty:
-            mdf = post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy())
-            _write_sheet(wb.add_worksheet("Missing in 2B"), "Missing in 2B",
-                         list(mdf.columns), mdf.values.tolist(), MISS_CT, fmts)
-
-        if not r["missing_books"].empty:
-            mbdf = post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy())
-            _write_sheet(wb.add_worksheet("Missing in Books"), "Missing in Books",
-                         list(mbdf.columns), mbdf.values.tolist(), MISS_CT, fmts)
-
-        # Supplier Wise ITC Summary
-        supplier_gstins = set()
-        if not r["books_raw"].empty: supplier_gstins.update(r["books_raw"]["GSTIN"].unique())
-        if not r["gstr_raw"].empty:  supplier_gstins.update(r["gstr_raw"]["GSTIN"].unique())
-        sup_rows_all = []
-        for gstin in supplier_gstins:
-            ib = r["books_raw"][r["books_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum() if not r["books_raw"].empty else 0
-            ig = r["gstr_raw"][r["gstr_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum()   if not r["gstr_raw"].empty  else 0
-            sup_rows_all.append({
-                "GSTIN": str(gstin), "Supplier": str(trade_name_map.get(gstin, "Unknown")),
-                "ITC as per Books": round(float(ib), 2), "ITC as per 2B": round(float(ig), 2),
-                "ITC Difference": round(float(ig) - float(ib), 2),
-            })
-        if sup_rows_all:
-            sdf = post_processing_cleaner(pd.DataFrame(sup_rows_all))
-            _write_sheet(wb.add_worksheet("Supplier Wise ITC Summary"), "Supplier Wise ITC Summary",
-                         ["GSTIN","Supplier","ITC as per Books","ITC as per 2B","ITC Difference"],
-                         sdf[["GSTIN","Supplier","ITC as per Books","ITC as per 2B","ITC Difference"]].values.tolist(),
-                         {"GSTIN":"text","Supplier":"text","ITC as per Books":"number",
-                          "ITC as per 2B":"number","ITC Difference":"number"}, fmts)
-
-        if not detail_df.empty:
-            ddf = detail_df.copy()
-            ddf["Invoice Date"] = pd.to_datetime(ddf["Date"], format="%d-%b-%Y", errors="coerce")
-            ddf = ddf.sort_values(["Supplier","Date"])
-            ws_dd = wb.add_worksheet("Supplier Drill Down")
-            ws_dd.write(0, 0, "Supplier Drill Down — Invoice Level Details", fmts["title"])
-            ws_dd.set_row(1, 20)
-            dd_hdrs = ["GSTIN","Supplier","Invoice No","Invoice Date",
-                       "ITC Books","ITC 2B","Difference","Remarks"]
-            for ci, h in enumerate(dd_hdrs):
-                ws_dd.write(1, ci, h, fmts["header"])
-            for ri, row_data in ddf.iterrows():
-                safe_write_text(ws_dd, ri+2, 0, row_data["GSTIN"],       fmts["text"])
-                safe_write_text(ws_dd, ri+2, 1, row_data["Supplier"],    fmts["text"])
-                safe_write_text(ws_dd, ri+2, 2, row_data["Invoice No"],  fmts["text"])
-                try:
-                    idt = row_data["Invoice Date"]
-                    ws_dd.write_datetime(ri+2, 3, pd.Timestamp(idt).to_pydatetime(), fmts["date"]) \
-                        if pd.notna(idt) else safe_write_text(ws_dd, ri+2, 3, "", fmts["text"])
-                except Exception:
-                    safe_write_text(ws_dd, ri+2, 3, "", fmts["text"])
-                safe_write_number(ws_dd, ri+2, 4, row_data["ITC Books"],  fmts["number"])
-                safe_write_number(ws_dd, ri+2, 5, row_data["ITC 2B"],    fmts["number"])
-                safe_write_number(ws_dd, ri+2, 6, row_data["Difference"],fmts["number"])
-                safe_write_text(ws_dd, ri+2, 7, row_data["Remarks"],     fmts["text"])
-            ws_dd.autofilter(1, 0, 1, 7)
-            for ci, w in enumerate([20,30,20,15,15,15,15,18]):
-                ws_dd.set_column(ci, ci, w)
-            ws_dd.freeze_panes(2, 0)
-            ws_dd.autofit()
-
-        if not r["no_itc"].empty:
-            nidf = post_processing_cleaner(
-                r["no_itc"][["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","Invoice_Value"]].copy())
-            _write_sheet(wb.add_worksheet("NO ITC"), "Zero ITC Invoices",
-                         list(nidf.columns), nidf.values.tolist(),
-                         {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text",
-                          "Invoice_Date":"date","Taxable_Value":"number","Invoice_Value":"number"}, fmts)
-
-    full_output.seek(0)
-    st.download_button(
-        "📥 Download Full Report",
-        data=full_output,
-        file_name=f"reconciliation_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-
-# ── ISSUES ONLY EXCEL ─────────────────────────────────────────────────────────
-
-with col_dl2:
-    issues_output = io.BytesIO()
-    with pd.ExcelWriter(issues_output, engine="xlsxwriter") as writer:
-        wb2   = writer.book
-        fmts2 = _build_workbook_formats(wb2)
-
-        if not r["missing_2b"].empty:
-            mdf = post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy())
-            _write_sheet(wb2.add_worksheet("Missing in 2B"), "Invoices Missing in GSTR-2B",
-                         list(mdf.columns), mdf.values.tolist(), MISS_CT, fmts2)
-        else:
-            ws_e = wb2.add_worksheet("Missing in 2B")
-            ws_e.write(0, 0, "No invoices missing in GSTR-2B ✓", fmts2["title"])
-
-        if not r["missing_books"].empty:
-            mbdf = post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy())
-            _write_sheet(wb2.add_worksheet("Missing in Books"), "Invoices Missing in Books",
-                         list(mbdf.columns), mbdf.values.tolist(), MISS_CT, fmts2)
-        else:
-            ws_e = wb2.add_worksheet("Missing in Books")
-            ws_e.write(0, 0, "No invoices missing in Books ✓", fmts2["title"])
-
-        tax_diff_df = r.get("tax_diff", pd.DataFrame())
-        if not tax_diff_df.empty:
-            td_rows = []
-            for _, row in tax_diff_df.iterrows():
-                gstin    = row.get("GSTIN_2B") or row.get("GSTIN_Books", "")
-                inv_no   = row.get("Invoice_No_2B") or row.get("Invoice_No_Books", "")
-                inv_date = row.get("Invoice_Date_2B") or row.get("Invoice_Date_Books")
-                td_rows.append({
-                    "GSTIN":       str(gstin),
-                    "Supplier":    str(trade_name_map.get(gstin, "")),
-                    "Invoice_No":  str(inv_no),
-                    "Invoice_Date":inv_date,
-                    "ITC Books":   float(row.get("TOTAL_TAX_Books", 0) or 0),
-                    "ITC 2B":      float(row.get("TOTAL_TAX_2B", 0) or 0),
-                    "Difference":  float(row.get("TAX_DIFF", 0) or 0),
-                })
-            tdf = pd.DataFrame(td_rows)
-            _write_sheet(wb2.add_worksheet("Tax Differences"), "Tax Amount Differences",
-                         list(tdf.columns), tdf.values.tolist(),
-                         {"GSTIN":"text","Supplier":"text","Invoice_No":"text","Invoice_Date":"date",
-                          "ITC Books":"number","ITC 2B":"number","Difference":"number"}, fmts2)
-        else:
-            ws_e = wb2.add_worksheet("Tax Differences")
-            ws_e.write(0, 0, "No tax differences found ✓", fmts2["title"])
-
+with cd2:
+    io2=io.BytesIO()
+    with pd.ExcelWriter(io2,engine="xlsxwriter") as w:
+        wb2=w.book; fmts2=_bf(wb2)
+        if not r["missing_2b"].empty: _ws(wb2.add_worksheet("Missing in 2B"),"Invoices Missing in GSTR-2B",list(MISS_CT),post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy()).values.tolist(),MISS_CT,fmts2)
+        else: wb2.add_worksheet("Missing in 2B").write(0,0,"No invoices missing in GSTR-2B ✓",fmts2["title"])
+        if not r["missing_books"].empty: _ws(wb2.add_worksheet("Missing in Books"),"Invoices Missing in Books",list(MISS_CT),post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy()).values.tolist(),MISS_CT,fmts2)
+        else: wb2.add_worksheet("Missing in Books").write(0,0,"No invoices missing in Books ✓",fmts2["title"])
+        tdf=r.get("tax_diff",pd.DataFrame())
+        if not tdf.empty:
+            td_rows=[[str(rw.get("GSTIN_2B") or rw.get("GSTIN_Books","")),str(trade_name_map.get(rw.get("GSTIN_2B") or rw.get("GSTIN_Books",""),"")),str(rw.get("Invoice_No_2B") or rw.get("Invoice_No_Books","")),rw.get("Invoice_Date_2B") or rw.get("Invoice_Date_Books"),float(rw.get("TOTAL_TAX_Books",0) or 0),float(rw.get("TOTAL_TAX_2B",0) or 0),float(rw.get("TAX_DIFF",0) or 0)] for _,rw in tdf.iterrows()]
+            _ws(wb2.add_worksheet("Tax Differences"),"Tax Amount Differences",["GSTIN","Supplier","Invoice_No","Invoice_Date","ITC Books","ITC 2B","Difference"],td_rows,{"GSTIN":"text","Supplier":"text","Invoice_No":"text","Invoice_Date":"date","ITC Books":"number","ITC 2B":"number","Difference":"number"},fmts2)
+        else: wb2.add_worksheet("Tax Differences").write(0,0,"No tax differences found ✓",fmts2["title"])
         if not all_issues.empty:
-            idf = all_issues.copy()
-            for col in idf.select_dtypes(include=["object"]).columns:
-                idf[col] = idf[col].apply(lambda v: "" if (v is None or pd.isna(v)) else str(v))
-            issue_ct = {c: ("date" if c=="Invoice_Date" else "number" if c in ("Taxable_Value","Invoice_Value","TOTAL_TAX") else "text")
-                        for c in idf.columns}
-            _write_sheet(wb2.add_worksheet("Data Issues"), "Data Quality Issues",
-                         list(idf.columns), idf.values.tolist(), issue_ct, fmts2)
-        else:
-            ws_e = wb2.add_worksheet("Data Issues")
-            ws_e.write(0, 0, "No data issues found ✓", fmts2["title"])
-
-    issues_output.seek(0)
-    st.download_button(
-        "📥 Download Issues Only",
-        data=issues_output,
-        file_name=f"issues_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
+            idf=all_issues.copy()
+            for col in idf.select_dtypes(include=["object"]).columns: idf[col]=idf[col].apply(lambda v:"" if(v is None or pd.isna(v)) else str(v))
+            issue_ct={c:("date" if c=="Invoice_Date" else "number" if c in("Taxable_Value","Invoice_Value","TOTAL_TAX") else "text") for c in idf.columns}
+            _ws(wb2.add_worksheet("Data Issues"),"Data Quality Issues",list(idf.columns),idf.values.tolist(),issue_ct,fmts2)
+        else: wb2.add_worksheet("Data Issues").write(0,0,"No data issues found ✓",fmts2["title"])
+    io2.seek(0)
+    st.download_button("📥 Download Issues Only",data=io2,file_name=f"issues_{datetime.now().strftime('%Y%m%d')}.xlsx",mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",use_container_width=True)
