@@ -170,14 +170,20 @@ def show_format_badge(fmt: str):
 # =================== SMART PARSER ROUTER =================== #
 
 def load_raw(uploaded_file) -> pd.DataFrame:
-    """Load file into DataFrame without any header assumptions."""
+    """
+    Load file into DataFrame without any header assumptions.
+    All cells are coerced to string to prevent float/join errors downstream.
+    """
     name = uploaded_file.name.lower()
     if name.endswith(".csv"):
-        return pd.read_csv(uploaded_file, header=None, dtype=str)
+        df = pd.read_csv(uploaded_file, header=None, dtype=str)
     elif name.endswith(".xls"):
-        return pd.read_excel(uploaded_file, engine="xlrd", header=None, dtype=str)
+        # xlrd does not reliably honour dtype=str — load then convert
+        df = pd.read_excel(uploaded_file, engine="xlrd", header=None)
     else:
-        return pd.read_excel(uploaded_file, header=None, dtype=str)
+        df = pd.read_excel(uploaded_file, header=None)
+    # Force every cell to str, replacing NaN with empty string
+    return df.fillna("").astype(str)
 
 def parse_books(uploaded_file) -> tuple:
     """
