@@ -115,26 +115,39 @@ def calculate_invoice_value(row: pd.Series) -> float:
 
 # =================== FORMAT DETECTION =================== #
 
+def _safe_str_list(row_series) -> list:
+    """Convert a pandas Series row to a safe list of lowercase strings. 
+    Handles floats, NaN, dates — anything that isn't already a string."""
+    result = []
+    for v in row_series.tolist():
+        try:
+            if v is None or (isinstance(v, float) and np.isnan(v)):
+                result.append("")
+            else:
+                result.append(str(v).strip().lower())
+        except Exception:
+            result.append("")
+    return result
+
 def detect_file_format(df: pd.DataFrame, filename: str = "") -> str:
     """
     Detect file format from raw DataFrame.
     Returns: 'tally_pr' | 'gstr2b_excel' | 'standard' | 'unknown'
     """
     try:
-        # Scan first 15 rows as flat text
+        # Scan first 15 rows as flat text — safe against float/NaN cells
         preview_text = ""
         for i in range(min(15, len(df))):
-            row_vals = df.iloc[i].astype(str).str.strip().str.lower().tolist()
+            row_vals = _safe_str_list(df.iloc[i])
             preview_text += " ".join(row_vals) + " "
 
         # ── Check for Tally Purchase Register ──
         is_tally = False
         if "purchase register" in preview_text:
             is_tally = True
-        # Also check column-by-column for Tally header keywords
         for i in range(min(10, len(df))):
-            row_vals = [str(v).strip().lower() for v in df.iloc[i].tolist()]
-            has_particulars = any("particulars" in v for v in row_vals)
+            row_vals = _safe_str_list(df.iloc[i])
+            has_particulars  = any("particulars" in v for v in row_vals)
             has_supplier_inv = any("supplier invoice" in v for v in row_vals)
             if has_particulars and has_supplier_inv:
                 is_tally = True
@@ -148,7 +161,7 @@ def detect_file_format(df: pd.DataFrame, filename: str = "") -> str:
         if "gstr-2b" in preview_text or "gstr2b" in preview_text:
             is_gstr2b = True
         for i in range(min(10, len(df))):
-            row_vals = [str(v).strip().lower() for v in df.iloc[i].tolist()]
+            row_vals = _safe_str_list(df.iloc[i])
             if any("gstin of supplier" in v for v in row_vals):
                 is_gstr2b = True
                 break
@@ -175,18 +188,30 @@ def detect_file_format(df: pd.DataFrame, filename: str = "") -> str:
 def _find_header_row(df: pd.DataFrame) -> int:
     """Find the row index where actual column headers are (has 'Particulars' and 'Date')."""
     for i in range(min(12, len(df))):
-        row_vals = [str(v).strip().lower() for v in df.iloc[i].tolist()]
-        if "particulars" in row_vals and "date" in row_vals:
+        row_vals = _safe_str_list(df.iloc[i])
+        has_particulars = any("particulars" in v for v in row_vals)
+        has_date        = any(v == "date" for v in row_vals)
+        if has_particulars and has_date:
             return i
     return 6  # Default fallback: row index 6 (7th row)
 
 def _get_col_idx(columns: list, *search_terms) -> Optional[int]:
-    """Find column index by partial match (case-insensitive). Returns first match."""
+    """
+    Find column index by partial match (case-insensitive).
+    If multiple search_terms given, finds col that contains ALL terms (AND logic).
+    Falls back to finding any single term if AND match fails.
+    """
     cols_lower = [str(c).strip().lower() for c in columns]
-    for term in search_terms:
-        term_lower = term.strip().lower()
+    if len(search_terms) > 1:
+        # AND match: column must contain ALL search terms
         for i, col in enumerate(cols_lower):
-            if term_lower in col:
+            if all(t.strip().lower() in col for t in search_terms):
+                return i
+    # Single term OR fallback
+    for term in search_terms:
+        t = term.strip().lower()
+        for i, col in enumerate(cols_lower):
+            if t in col:
                 return i
     return None
 
@@ -220,7 +245,7 @@ def parse_tally_purchase_register(raw_df: pd.DataFrame) -> Tuple[pd.DataFrame, p
     logger.info(f"Tally header row found at index: {header_row_idx}")
 
     # Rebuild DataFrame with correct headers
-    headers = [str(v).strip() for v in raw_df.iloc[header_row_idx].tolist()]
+    headers = [("" if (v is None or (isinstance(v, float) and np.isnan(v))) else str(v).strip()) for v in raw_df.iloc[header_row_idx].tolist()]
     data_rows = raw_df.iloc[header_row_idx + 1:].reset_index(drop=True)
     data_rows.columns = headers
 
@@ -267,7 +292,11 @@ def parse_tally_purchase_register(raw_df: pd.DataFrame) -> Tuple[pd.DataFrame, p
             return ""
         try:
             v = row.iloc[idx]
-            return "" if pd.isna(v) else str(v).strip()
+            if v is None:
+                return ""
+            if isinstance(v, float) and np.isnan(v):
+                return ""
+            return str(v).strip()
         except Exception:
             return ""
 
@@ -280,7 +309,7 @@ def parse_tally_purchase_register(raw_df: pd.DataFrame) -> Tuple[pd.DataFrame, p
             continue
         # Skip if no supplier name
         trade_name = _get_str(row, idx_name)
-        if not trade_name or trade_name.lower() in ["nan", "none", "total", "grand total"]:
+        if not trade_name or trade_name.lower() in ["nan", "none", "total", "grand total", ""]:
             continue
 
         # ── Raw financial values ──
@@ -394,7 +423,7 @@ def parse_gstr2b_excel(raw_df: pd.DataFrame) -> pd.DataFrame:
     # Try to find the header row just before data_start
     header_candidates = []
     for i in range(max(0, data_start - 3), data_start):
-        row_text = " ".join([str(v).strip().lower() for v in raw_df.iloc[i].tolist()])
+        row_text = " ".join(_safe_str_list(raw_df.iloc[i]))
         if "gstin" in row_text or "invoice" in row_text or "taxable" in row_text:
             header_candidates.append(i)
 
@@ -404,7 +433,7 @@ def parse_gstr2b_excel(raw_df: pd.DataFrame) -> pd.DataFrame:
     if header_candidates:
         hdr_row = raw_df.iloc[header_candidates[-1]].tolist()
         for ci, val in enumerate(hdr_row):
-            v = str(val).strip().lower()
+            v = ("" if (val is None or (isinstance(val, float) and np.isnan(val))) else str(val).strip().lower())
             if "gstin of supplier" in v or ("gstin" in v and "supplier" in v):
                 col_map["gstin"] = ci
             elif "trade" in v and ("name" in v or "legal" in v):
@@ -716,8 +745,12 @@ def create_trade_name_mapping(gstr_df: pd.DataFrame, books_df: pd.DataFrame) -> 
 def level1_strict_match(gstr_df, books_df):
     gstr_df  = gstr_df.copy()
     books_df = books_df.copy()
-    gstr_df["KEY"]  = gstr_df["GSTIN"]  + "|" + gstr_df["Invoice_No"]  + "|" + gstr_df["Invoice_Date"].astype(str)
-    books_df["KEY"] = books_df["GSTIN"] + "|" + books_df["Invoice_No"] + "|" + books_df["Invoice_Date"].astype(str)
+    gstr_df["KEY"]  = (gstr_df["GSTIN"].fillna("").astype(str)  + "|" +
+                        gstr_df["Invoice_No"].fillna("").astype(str)  + "|" +
+                        gstr_df["Invoice_Date"].fillna("").astype(str))
+    books_df["KEY"] = (books_df["GSTIN"].fillna("").astype(str) + "|" +
+                        books_df["Invoice_No"].fillna("").astype(str) + "|" +
+                        books_df["Invoice_Date"].fillna("").astype(str))
     matched_keys  = set(gstr_df["KEY"]).intersection(set(books_df["KEY"]))
     gstr_matched  = gstr_df[gstr_df["KEY"].isin(matched_keys)].copy()
     books_matched = books_df[books_df["KEY"].isin(matched_keys)].copy()
@@ -733,10 +766,18 @@ def level2_normalized_match(gstr_unmatched, books_unmatched, tolerance):
         return pd.DataFrame(), gstr_unmatched, books_unmatched, set()
     gstr_df  = gstr_unmatched.copy()
     books_df = books_unmatched.copy()
-    gstr_df["NORM_KEY"]  = [f"{r['GSTIN']}|{normalize_invoice_number(r['Invoice_No'])}|{r['Invoice_Date']}"
-                            for _, r in gstr_df.iterrows()]
-    books_df["NORM_KEY"] = [f"{r['GSTIN']}|{normalize_invoice_number(r['Invoice_No'])}|{r['Invoice_Date']}"
-                            for _, r in books_df.iterrows()]
+    gstr_df["NORM_KEY"]  = [
+        str(r['GSTIN'] or '') + "|" +
+        normalize_invoice_number(str(r['Invoice_No'] or '')) + "|" +
+        str(r['Invoice_Date'])
+        for _, r in gstr_df.iterrows()
+    ]
+    books_df["NORM_KEY"] = [
+        str(r['GSTIN'] or '') + "|" +
+        normalize_invoice_number(str(r['Invoice_No'] or '')) + "|" +
+        str(r['Invoice_Date'])
+        for _, r in books_df.iterrows()
+    ]
     matched_norm_keys = set(gstr_df["NORM_KEY"]).intersection(set(books_df["NORM_KEY"]))
     if not matched_norm_keys:
         return pd.DataFrame(), gstr_unmatched, books_unmatched, set()
