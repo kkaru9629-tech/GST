@@ -790,7 +790,7 @@ with col_dl2:
         if not all_issues.empty:
             idf = all_issues.copy()
             for col in idf.select_dtypes(include=["object"]).columns:
-                idf[col] = idf[col].apply(lambda v: "" if (v is None or (isinstance(v,float) and not isinstance(v,bool))) else str(v))
+                idf[col] = idf[col].apply(lambda v: "" if (v is None or pd.isna(v)) else str(v))
             issue_ct = {c: ("date" if c=="Invoice_Date" else "number" if c in ("Taxable_Value","Invoice_Value","TOTAL_TAX") else "text")
                         for c in idf.columns}
             _write_sheet(wb2.add_worksheet("Data Issues"), "Data Quality Issues",
