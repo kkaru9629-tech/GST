@@ -615,31 +615,41 @@ def _build_workbook_formats(wb):
         "text":   wb.add_format({'font_name': 'Aptos Narrow'}),
     }
 
+def _xls_write_date(ws, r, c, val, fmts):
+    """Write a date cell — returns None so Streamlit magic display never sees a 0."""
+    try:
+        dt = pd.to_datetime(val)
+        if pd.notna(dt):
+            ws.write_datetime(r, c, dt.to_pydatetime(), fmts["date"])
+        else:
+            safe_write_text(ws, r, c, "", fmts["text"])
+    except Exception:
+        safe_write_text(ws, r, c, str(val) if pd.notna(val) else "", fmts["text"])
+
+def _xls_write_header(ws, row, col, text, fmt):
+    """Write a header cell — return value discarded via explicit assignment."""
+    _ = ws.write(row, col, text, fmt)
+
 def _write_sheet(ws, title, headers, data_rows, col_types, fmts):
-    ws.write(0, 0, title, fmts["title"])
-    ws.set_row(1, 20)
+    _ = ws.write(0, 0, title, fmts["title"])
+    _ = ws.set_row(1, 20)
     for ci, h in enumerate(headers):
-        ws.write(1, ci, h, fmts["header"])
+        _xls_write_header(ws, 1, ci, h, fmts["header"])
     for ri, row_data in enumerate(data_rows):
         for ci, val in enumerate(row_data):
             ct = col_types.get(headers[ci], "text")
             if ct == "date" and pd.notna(val):
-                try:
-                    dt = pd.to_datetime(val)
-                    ws.write_datetime(ri+2, ci, dt.to_pydatetime(), fmts["date"]) if not pd.isna(dt) else \
-                        safe_write_text(ws, ri+2, ci, "", fmts["text"])
-                except Exception:
-                    safe_write_text(ws, ri+2, ci, str(val) if pd.notna(val) else "", fmts["text"])
+                _xls_write_date(ws, ri+2, ci, val, fmts)
             elif ct == "number":
                 safe_write_number(ws, ri+2, ci, val, fmts["number"])
             else:
                 safe_write_text(ws, ri+2, ci, val, fmts["text"])
     for ci, h in enumerate(headers):
         ct = col_types.get(h, "text")
-        ws.set_column(ci, ci, 15 if ct in ("date","number") else 22,
-                      fmts["date"] if ct=="date" else fmts["number"] if ct=="number" else fmts["text"])
-    ws.freeze_panes(2, 0)
-    ws.autofit()
+        _ = ws.set_column(ci, ci, 15 if ct in ("date","number") else 22,
+                          fmts["date"] if ct=="date" else fmts["number"] if ct=="number" else fmts["text"])
+    _ = ws.freeze_panes(2, 0)
+    _ = ws.autofit()
 
 BOOK_CT = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date",
            "Taxable_Value":"number","CGST":"number","SGST":"number","IGST":"number",
@@ -700,32 +710,25 @@ def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol):
             ddf["Invoice Date"] = pd.to_datetime(ddf["Date"], format="%d-%b-%Y", errors="coerce")
             ddf = ddf.sort_values(["Supplier","Date"]).reset_index(drop=True)
             ws_dd = wb.add_worksheet("Supplier Drill Down")
-            ws_dd.write(0, 0, "Supplier Drill Down — Invoice Level Details", fmts["title"])
-            ws_dd.set_row(1, 20)
+            _xls_write_header(ws_dd, 0, 0, "Supplier Drill Down — Invoice Level Details", fmts["title"])
+            _ = ws_dd.set_row(1, 20)
             for ci, h in enumerate(["GSTIN","Supplier","Invoice No","Invoice Date",
                                      "ITC Books","ITC 2B","Difference","Remarks"]):
-                ws_dd.write(1, ci, h, fmts["header"])
+                _xls_write_header(ws_dd, 1, ci, h, fmts["header"])
             for ri, row_data in ddf.iterrows():
                 safe_write_text(ws_dd, ri+2, 0, row_data["GSTIN"],       fmts["text"])
                 safe_write_text(ws_dd, ri+2, 1, row_data["Supplier"],    fmts["text"])
                 safe_write_text(ws_dd, ri+2, 2, row_data["Invoice No"],  fmts["text"])
-                try:
-                    idt = row_data["Invoice Date"]
-                    if pd.notna(idt):
-                        ws_dd.write_datetime(ri+2, 3, pd.Timestamp(idt).to_pydatetime(), fmts["date"])
-                    else:
-                        safe_write_text(ws_dd, ri+2, 3, "", fmts["text"])
-                except Exception:
-                    safe_write_text(ws_dd, ri+2, 3, "", fmts["text"])
+                _xls_write_date(ws_dd, ri+2, 3, row_data["Invoice Date"], fmts)
                 safe_write_number(ws_dd, ri+2, 4, row_data["ITC Books"],  fmts["number"])
                 safe_write_number(ws_dd, ri+2, 5, row_data["ITC 2B"],    fmts["number"])
                 safe_write_number(ws_dd, ri+2, 6, row_data["Difference"],fmts["number"])
                 safe_write_text(ws_dd, ri+2, 7, row_data["Remarks"],     fmts["text"])
-            ws_dd.autofilter(1, 0, 1, 7)
+            _ = ws_dd.autofilter(1, 0, 1, 7)
             for ci, w in enumerate([20,30,20,15,15,15,15,18]):
-                ws_dd.set_column(ci, ci, w)
-            ws_dd.freeze_panes(2, 0)
-            ws_dd.autofit()
+                _ = ws_dd.set_column(ci, ci, w)
+            _ = ws_dd.freeze_panes(2, 0)
+            _ = ws_dd.autofit()
 
         if not r["no_itc"].empty:
             nidf = post_processing_cleaner(
