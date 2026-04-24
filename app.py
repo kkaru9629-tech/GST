@@ -74,6 +74,19 @@ st.markdown("""
     .stTabs [data-baseweb="tab"]      { padding: 8px 16px; }
     .streamlit-expanderHeader          { font-size: 1rem !important; }
     .stDataFrame:has(td:empty)         { display: none !important; }
+
+    /* ── Expander anti-shake ───────────────────────────────────────────────── */
+    /* Kill the open/close animation so the page doesn't jump */
+    details > div[data-testid="stExpanderDetails"] {
+        animation: none !important;
+        transition: none !important;
+    }
+    /* Reserve vertical space so content below doesn't shift when expander opens */
+    div[data-testid="stExpander"] {
+        contain: layout;
+    }
+    /* Prevent scroll-position jump on re-render */
+    html { scroll-behavior: auto !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -308,35 +321,59 @@ if "duplicate_issues" in r and not r["duplicate_issues"].empty:
     )
 
 if not all_issues.empty:
-    st.markdown(f"""
-    <div class="warning-box">
-        <strong>⚠️ {len(all_issues)} Data Issues Found</strong> — Fix these in source data before reconciling.
-    </div>""", unsafe_allow_html=True)
-    with st.expander("🔍 View Data Issues", expanded=False):
-        df_iss = all_issues.copy()
-        if "Invoice_Date" in df_iss.columns:
-            df_iss["Invoice_Date"] = pd.to_datetime(
-                df_iss["Invoice_Date"], errors="coerce"
+    # Prepare issues df once — outside the toggle so it never re-computes on open/close
+    _iss_cache_key = ("issues", _cache_key)
+    if st.session_state.get("_iss_df_key") != _iss_cache_key:
+        _df_iss_build = all_issues.copy()
+        if "Invoice_Date" in _df_iss_build.columns:
+            _df_iss_build["Invoice_Date"] = pd.to_datetime(
+                _df_iss_build["Invoice_Date"], errors="coerce"
             ).dt.strftime("%d-%b-%Y").fillna("")
-        df_iss = coerce_str_cols(df_iss)
-        cols_order = ["Issue"] + [c for c in df_iss.columns if c != "Issue"]
-        # Use st.dataframe directly — issues rows intentionally have blank Invoice_No/GSTIN
-        # (that's the issue being reported), so safe_dataframe's blank-row guard would drop them.
-        if not df_iss[cols_order].empty:
-            st.dataframe(df_iss[cols_order], use_container_width=True, hide_index=True,
-                column_config={
-                    "Issue":         st.column_config.TextColumn("Issue",        width=220),
-                    "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
-                    "Trade_Name":    st.column_config.TextColumn("Trade Name",   width=280),
-                    "Invoice_No":    st.column_config.TextColumn("Invoice No",   width=150),
-                    "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
-                    "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
-                    "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
-                })
-        ic = df_iss["Issue"].value_counts().reset_index()
-        ic.columns = ["Issue Type", "Count"]
-        if not ic.empty:
-            st.dataframe(ic, use_container_width=True, hide_index=True)
+        _df_iss_build = coerce_str_cols(_df_iss_build)
+        _cols_order   = ["Issue"] + [c for c in _df_iss_build.columns if c != "Issue"]
+        _df_iss_build = _df_iss_build[_cols_order]
+        _ic_build     = _df_iss_build["Issue"].value_counts().reset_index()
+        _ic_build.columns = ["Issue Type", "Count"]
+        st.session_state["_iss_df"]     = _df_iss_build
+        st.session_state["_iss_ic"]     = _ic_build
+        st.session_state["_iss_df_key"] = _iss_cache_key
+    df_iss   = st.session_state["_iss_df"]
+    _iss_ic  = st.session_state["_iss_ic"]
+
+    # Warning banner + toggle — session_state preserves open/close across re-runs
+    # so the page does not re-trigger the heavy content block unnecessarily
+    _warn_col, _toggle_col = st.columns([7, 1])
+    with _warn_col:
+        st.markdown(f"""
+        <div class="warning-box">
+            <strong>⚠️ {len(all_issues)} Data Issues Found</strong> — Fix these in source data before reconciling.
+        </div>""", unsafe_allow_html=True)
+    with _toggle_col:
+        st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
+        _issues_open = st.toggle(
+            "View Issues",
+            value=st.session_state.get("issues_open", False),
+            key="issues_toggle_widget",
+        )
+        st.session_state["issues_open"] = _issues_open
+
+    # Render in a stable container — content is already prepared above, no recompute
+    if st.session_state.get("issues_open", False):
+        with st.container():
+            _iss_col_cfg = {
+                "Issue":         st.column_config.TextColumn("Issue",        width=220),
+                "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
+                "Trade_Name":    st.column_config.TextColumn("Trade Name",   width=280),
+                "Invoice_No":    st.column_config.TextColumn("Invoice No",   width=150),
+                "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
+                "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
+                "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
+            }
+            if not df_iss.empty:
+                st.dataframe(df_iss, use_container_width=True,
+                             hide_index=True, column_config=_iss_col_cfg)
+            if not _iss_ic.empty:
+                st.dataframe(_iss_ic, use_container_width=True, hide_index=True)
 
 # ── QUICK INSIGHT CARDS ───────────────────────────────────────────────────────
 
