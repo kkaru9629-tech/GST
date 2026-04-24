@@ -642,18 +642,15 @@ BOOK_CT = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date"
 MISS_CT  = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date",
             "Taxable_Value":"number","TOTAL_TAX":"number"}
 
-# ── FULL EXCEL REPORT ─────────────────────────────────────────────────────────
+# ── PRE-GENERATE BOTH EXCEL BUFFERS (outside st.columns to avoid rendering artifacts) ──
 
-st.divider()
-col_dl1, col_dl2 = st.columns(2)
-
-with col_dl1:
-    full_output = io.BytesIO()
-    with pd.ExcelWriter(full_output, engine="xlsxwriter") as writer:
+def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol):
+    """Build the full reconciliation Excel report and return bytes."""
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
         wb   = writer.book
         fmts = _build_workbook_formats(wb)
 
-        # Summary sheet
         summary_df = post_processing_cleaner(pd.DataFrame({
             "Particulars": ["ITC - Books","ITC - GSTR-2B","Difference","ITC at Risk","Match %",
                             "Total Books","Total GSTR","Matched","Tax Diff","Missing 2B","Missing Books"],
@@ -661,35 +658,30 @@ with col_dl1:
                             s["Total_Books"],s["Total_GSTR"],s["Matched"],s["Tax_Diff"],
                             s["Missing_2B"],s["Missing_Books"]],
         }))
-        ws_s = wb.add_worksheet("Summary")
-        _write_sheet(ws_s, "Reconciliation Summary", list(summary_df.columns),
-                     summary_df.values.tolist(), {"Particulars":"text","Value":"number"}, fmts)
+        _write_sheet(wb.add_worksheet("Summary"), "Reconciliation Summary",
+                     list(summary_df.columns), summary_df.values.tolist(),
+                     {"Particulars":"text","Value":"number"}, fmts)
 
-        # Books
         if not r["books_raw"].empty:
             bdf = post_processing_cleaner(r["books_raw"].copy())
             _write_sheet(wb.add_worksheet("Books"), "Books Data",
                          list(bdf.columns), bdf.values.tolist(), BOOK_CT, fmts)
 
-        # GSTR-2B
         if not r["gstr_raw"].empty:
             gdf = post_processing_cleaner(r["gstr_raw"].copy())
             _write_sheet(wb.add_worksheet("GSTR-2B"), "GSTR-2B Data",
                          list(gdf.columns), gdf.values.tolist(), BOOK_CT, fmts)
 
-        # Missing in 2B
         if not r["missing_2b"].empty:
             mdf = post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy())
             _write_sheet(wb.add_worksheet("Missing in 2B"), "Missing in 2B",
                          list(mdf.columns), mdf.values.tolist(), MISS_CT, fmts)
 
-        # Missing in Books
         if not r["missing_books"].empty:
             mbdf = post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy())
             _write_sheet(wb.add_worksheet("Missing in Books"), "Missing in Books",
                          list(mbdf.columns), mbdf.values.tolist(), MISS_CT, fmts)
 
-        # Supplier Wise ITC Summary
         if sup_rows:
             sdf = post_processing_cleaner(pd.DataFrame(sup_rows))
             _write_sheet(wb.add_worksheet("Supplier Wise ITC Summary"), "Supplier Wise ITC Summary",
@@ -698,7 +690,6 @@ with col_dl1:
                          {"GSTIN":"text","Supplier":"text","ITC as per Books":"number",
                           "ITC as per 2B":"number","ITC Difference":"number"}, fmts)
 
-        # Supplier Drill Down
         if not detail_df.empty:
             ddf = detail_df.copy()
             ddf["Invoice Date"] = pd.to_datetime(ddf["Date"], format="%d-%b-%Y", errors="coerce")
@@ -706,9 +697,8 @@ with col_dl1:
             ws_dd = wb.add_worksheet("Supplier Drill Down")
             ws_dd.write(0, 0, "Supplier Drill Down — Invoice Level Details", fmts["title"])
             ws_dd.set_row(1, 20)
-            dd_hdrs = ["GSTIN","Supplier","Invoice No","Invoice Date",
-                       "ITC Books","ITC 2B","Difference","Remarks"]
-            for ci, h in enumerate(dd_hdrs):
+            for ci, h in enumerate(["GSTIN","Supplier","Invoice No","Invoice Date",
+                                     "ITC Books","ITC 2B","Difference","Remarks"]):
                 ws_dd.write(1, ci, h, fmts["header"])
             for ri, row_data in ddf.iterrows():
                 safe_write_text(ws_dd, ri+2, 0, row_data["GSTIN"],       fmts["text"])
@@ -716,8 +706,10 @@ with col_dl1:
                 safe_write_text(ws_dd, ri+2, 2, row_data["Invoice No"],  fmts["text"])
                 try:
                     idt = row_data["Invoice Date"]
-                    ws_dd.write_datetime(ri+2, 3, pd.Timestamp(idt).to_pydatetime(), fmts["date"]) \
-                        if pd.notna(idt) else safe_write_text(ws_dd, ri+2, 3, "", fmts["text"])
+                    if pd.notna(idt):
+                        ws_dd.write_datetime(ri+2, 3, pd.Timestamp(idt).to_pydatetime(), fmts["date"])
+                    else:
+                        safe_write_text(ws_dd, ri+2, 3, "", fmts["text"])
                 except Exception:
                     safe_write_text(ws_dd, ri+2, 3, "", fmts["text"])
                 safe_write_number(ws_dd, ri+2, 4, row_data["ITC Books"],  fmts["number"])
@@ -730,7 +722,6 @@ with col_dl1:
             ws_dd.freeze_panes(2, 0)
             ws_dd.autofit()
 
-        # Zero ITC
         if not r["no_itc"].empty:
             nidf = post_processing_cleaner(
                 r["no_itc"][["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","Invoice_Value"]].copy())
@@ -739,42 +730,33 @@ with col_dl1:
                          {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text",
                           "Invoice_Date":"date","Taxable_Value":"number","Invoice_Value":"number"}, fmts)
 
-    full_output.seek(0)
-    st.download_button(
-        "📥 Download Full Report",
-        data=full_output,
-        file_name=f"reconciliation_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
+    out.seek(0)
+    return out.read()
 
-# ── ISSUES ONLY EXCEL ─────────────────────────────────────────────────────────
 
-with col_dl2:
-    issues_output = io.BytesIO()
-    with pd.ExcelWriter(issues_output, engine="xlsxwriter") as writer:
+def _build_issues_excel(r, all_issues, trade_name_map):
+    """Build the issues-only Excel report and return bytes."""
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
         wb2   = writer.book
         fmts2 = _build_workbook_formats(wb2)
 
-        # Sheet 1: Missing in GSTR-2B
         if not r["missing_2b"].empty:
             mdf = post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy())
             _write_sheet(wb2.add_worksheet("Missing in 2B"), "Invoices Missing in GSTR-2B",
                          list(mdf.columns), mdf.values.tolist(), MISS_CT, fmts2)
         else:
-            ws_e = wb2.add_worksheet("Missing in 2B")
-            ws_e.write(0, 0, "No invoices missing in GSTR-2B ✓", fmts2["title"])
+            wb2.add_worksheet("Missing in 2B").write(0, 0, "No invoices missing in GSTR-2B ✓",
+                                                     _build_workbook_formats(wb2)["title"])
 
-        # Sheet 2: Missing in Books
         if not r["missing_books"].empty:
             mbdf = post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy())
             _write_sheet(wb2.add_worksheet("Missing in Books"), "Invoices Missing in Books",
                          list(mbdf.columns), mbdf.values.tolist(), MISS_CT, fmts2)
         else:
-            ws_e = wb2.add_worksheet("Missing in Books")
-            ws_e.write(0, 0, "No invoices missing in Books ✓", fmts2["title"])
+            wb2.add_worksheet("Missing in Books").write(0, 0, "No invoices missing in Books ✓",
+                                                        fmts2["title"])
 
-        # Sheet 3: Tax Differences
         tax_diff_df = r.get("tax_diff", pd.DataFrame())
         if not tax_diff_df.empty:
             td_rows = []
@@ -797,26 +779,45 @@ with col_dl2:
                          {"GSTIN":"text","Supplier":"text","Invoice_No":"text","Invoice_Date":"date",
                           "ITC Books":"number","ITC 2B":"number","Difference":"number"}, fmts2)
         else:
-            ws_e = wb2.add_worksheet("Tax Differences")
-            ws_e.write(0, 0, "No tax differences found ✓", fmts2["title"])
+            wb2.add_worksheet("Tax Differences").write(0, 0, "No tax differences found ✓", fmts2["title"])
 
-        # Sheet 4: Data Issues
         if not all_issues.empty:
             idf = all_issues.copy()
             for col in idf.select_dtypes(include=["object"]).columns:
                 idf[col] = idf[col].apply(lambda v: "" if (v is None or pd.isna(v)) else str(v))
-            issue_ct = {c: ("date" if c=="Invoice_Date" else "number" if c in ("Taxable_Value","Invoice_Value","TOTAL_TAX") else "text")
+            issue_ct = {c: ("date" if c=="Invoice_Date" else
+                            "number" if c in ("Taxable_Value","Invoice_Value","TOTAL_TAX") else "text")
                         for c in idf.columns}
             _write_sheet(wb2.add_worksheet("Data Issues"), "Data Quality Issues",
                          list(idf.columns), idf.values.tolist(), issue_ct, fmts2)
         else:
-            ws_e = wb2.add_worksheet("Data Issues")
-            ws_e.write(0, 0, "No data issues found ✓", fmts2["title"])
+            wb2.add_worksheet("Data Issues").write(0, 0, "No data issues found ✓", fmts2["title"])
 
-    issues_output.seek(0)
+    out.seek(0)
+    return out.read()
+
+
+# Generate both Excel files before rendering any download buttons
+full_excel_bytes   = _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol)
+issues_excel_bytes = _build_issues_excel(r, all_issues, trade_name_map)
+
+# ── DOWNLOAD BUTTONS — only st.download_button inside columns ─────────────────
+st.divider()
+col_dl1, col_dl2 = st.columns(2)
+
+with col_dl1:
+    st.download_button(
+        "📥 Download Full Report",
+        data=full_excel_bytes,
+        file_name=f"reconciliation_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+
+with col_dl2:
     st.download_button(
         "📥 Download Issues Only",
-        data=issues_output,
+        data=issues_excel_bytes,
         file_name=f"issues_{datetime.now().strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
