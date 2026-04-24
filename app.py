@@ -1,6 +1,6 @@
 """
 GST Reconciliation App
-Version: 8.0 — Premium UI redesign
+Version: 9.0 — Multi-file GSTR-2B, Month-wise analysis, Action columns
 """
 
 import streamlit as st
@@ -38,101 +38,64 @@ st.set_page_config(page_title="GST Reconciliation", layout="wide")
 
 st.markdown("""
 <style>
-    /* Base font */
     .stApp, .stMarkdown, .stText, .stCaption, .stMetric,
     .stTabs [data-baseweb="tab"], button, label, input {
         font-family: 'Aptos Narrow', 'Aptos', sans-serif !important;
     }
-
-    /* Insight cards */
     .insight-card {
-        border-radius: 12px;
-        padding: 20px 24px;
-        text-align: center;
-        margin-bottom: 8px;
+        border-radius: 12px; padding: 20px 24px;
+        text-align: center; margin-bottom: 8px;
     }
     .insight-card .card-number {
-        font-size: 2.4rem;
-        font-weight: 700;
-        line-height: 1.1;
+        font-size: 2.4rem; font-weight: 700; line-height: 1.1;
         font-family: 'Aptos Narrow', 'Aptos', sans-serif;
     }
     .insight-card .card-label {
-        font-size: 0.85rem;
-        font-weight: 600;
-        margin-top: 4px;
+        font-size: 0.85rem; font-weight: 600; margin-top: 4px;
         font-family: 'Aptos Narrow', 'Aptos', sans-serif;
     }
     .card-green  { background:#DCFCE7; }
-    .card-green  .card-number { color:#166534; }
-    .card-green  .card-label  { color:#166534; }
+    .card-green  .card-number, .card-green  .card-label { color:#166534; }
     .card-red    { background:#FEE2E2; }
-    .card-red    .card-number { color:#991B1B; }
-    .card-red    .card-label  { color:#991B1B; }
+    .card-red    .card-number, .card-red    .card-label { color:#991B1B; }
     .card-orange { background:#FEF3C7; }
-    .card-orange .card-number { color:#92400E; }
-    .card-orange .card-label  { color:#92400E; }
+    .card-orange .card-number, .card-orange .card-label { color:#92400E; }
     .card-yellow { background:#FFEDD5; }
-    .card-yellow .card-number { color:#9A3412; }
-    .card-yellow .card-label  { color:#9A3412; }
-
-    /* Warning box for data issues */
+    .card-yellow .card-number, .card-yellow .card-label { color:#9A3412; }
     .warning-box {
-        background-color: #FEF2F2;
-        padding: 1rem;
-        border-left: 4px solid #DC2626;
-        border-radius: 4px;
-        margin: 1rem 0;
+        background-color:#FEF2F2; padding:1rem;
+        border-left:4px solid #DC2626; border-radius:4px; margin:1rem 0;
     }
-
-    /* Filter bar */
-    .filter-section {
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin: 12px 0;
+    .month-summary-box {
+        background:#F0F9FF; border:1px solid #BAE6FD;
+        border-radius:10px; padding:16px 20px; margin:12px 0;
     }
-
-    /* Remark chips in tables */
-    .remark-matched   { background:#DCFCE7; color:#166534; padding:2px 8px; border-radius:8px; font-size:0.8rem; }
-    .remark-missing-g { background:#FEE2E2; color:#991B1B; padding:2px 8px; border-radius:8px; font-size:0.8rem; }
-    .remark-missing-b { background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:8px; font-size:0.8rem; }
-    .remark-taxdiff   { background:#FFEDD5; color:#9A3412; padding:2px 8px; border-radius:8px; font-size:0.8rem; }
-
     .stTabs [data-baseweb="tab-list"] { gap: 2px; }
     .stTabs [data-baseweb="tab"]      { padding: 8px 16px; }
     .streamlit-expanderHeader          { font-size: 1rem !important; }
-
-    /* Download buttons row */
-    .download-row { display:flex; gap:12px; margin-top:16px; }
+    .stDataFrame:has(td:empty)         { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # =================== HEADER =================== #
 
 st.title("GST Reconciliation")
-st.caption("Books vs GSTR-2B · Supports Tally PR, GSTR-2B Excel & Standard Template")
+st.caption("Books vs GSTR-2B · Multi-month · Tally PR, GSTR-2B Excel & Standard Template")
 
 # =================== SAFE DISPLAY HELPER =================== #
 
 def safe_dataframe(df, column_config=None, empty_message="No data to display", caption=None):
-    """Render a dataframe only when it has real rows. Shows info message otherwise."""
+    """Render a dataframe only when it has real rows."""
     if df is None or df.empty:
-        st.info(empty_message)
-        return False
-    # Drop rows that are entirely empty / all-NaN
+        st.info(empty_message); return False
     df = df.dropna(how="all")
-    # Drop rows where Invoice_No / GSTIN are blank placeholders
     for col in ["Invoice_No", "Invoice No"]:
         if col in df.columns:
-            mask = df[col].astype(str).str.strip().str.lower() != "nan"
-            mask = mask & (df[col].astype(str).str.strip() != "")
+            mask = (df[col].astype(str).str.strip().str.lower() != "nan") & \
+                   (df[col].astype(str).str.strip() != "")
             df = df[mask]
     if df.empty:
-        st.info(empty_message)
-        return False
-    # Guard: don't render a table that is nothing but zeros/empty values
+        st.info(empty_message); return False
     numeric_cols = df.select_dtypes(include=["number"]).columns
     str_cols     = df.select_dtypes(exclude=["number"]).columns
     has_numbers  = len(numeric_cols) > 0 and df[numeric_cols].abs().sum().sum() > 0
@@ -141,11 +104,9 @@ def safe_dataframe(df, column_config=None, empty_message="No data to display", c
     if len(str_cols) > 0:
         for col in str_cols:
             if df[col].astype(str).str.strip().str.lower().apply(lambda v: v not in _EMPTIES).any():
-                has_strings = True
-                break
+                has_strings = True; break
     if not has_numbers and not has_strings:
-        st.info(empty_message)
-        return False
+        st.info(empty_message); return False
     if caption:
         st.caption(caption)
     st.dataframe(df, use_container_width=True, hide_index=True, column_config=column_config)
@@ -157,14 +118,16 @@ col1, col2 = st.columns(2)
 with col1:
     books_file = st.file_uploader("📤 Upload Books", type=["xlsx", "xls", "csv"])
 with col2:
-    gstr_file = st.file_uploader("📤 Upload GSTR-2B", type=["xlsx", "xls", "csv"])
+    # FEATURE 1: Multiple GSTR-2B files
+    gstr_files = st.file_uploader(
+        "📤 Upload GSTR-2B (multiple months supported)",
+        type=["xlsx", "xls", "csv"],
+        accept_multiple_files=True,
+    )
 
 tolerance = st.number_input(
-    "Tolerance (₹)",
-    value=DEFAULT_TOLERANCE,
-    step=0.5,
-    min_value=0.0,
-    help="Maximum acceptable tax difference (in ₹) between Books and GSTR-2B for an invoice to be considered 'Matched'. Default: ₹1.00"
+    "Tolerance (₹)", value=DEFAULT_TOLERANCE, step=0.5, min_value=0.0,
+    help="Max acceptable tax difference (₹) for 'Matched'. Default: ₹1.00"
 )
 
 # =================== PARSER ROUTER =================== #
@@ -173,15 +136,13 @@ def load_raw(uploaded_file) -> pd.DataFrame:
     name = uploaded_file.name.lower()
     if name.endswith(".csv"):
         return pd.read_csv(uploaded_file, header=None)
-    elif name.endswith(".xls"):
-        return pd.read_excel(uploaded_file, header=None)
     else:
         return pd.read_excel(uploaded_file, header=None)
 
 def parse_books(uploaded_file):
     raw = load_raw(uploaded_file)
     fmt = detect_file_format(raw, uploaded_file.name)
-    logger.info(f"Books format detected: {fmt}")          # log only — no UI badge
+    logger.info(f"Books format detected: {fmt}")
     if fmt == "tally_pr":
         return (*parse_tally_purchase_register(raw), fmt)
     uploaded_file.seek(0)
@@ -189,16 +150,28 @@ def parse_books(uploaded_file):
          pd.read_excel(uploaded_file)
     return (*parse_tally(df), "standard")
 
-def parse_gstr(uploaded_file):
+def parse_gstr_single(uploaded_file):
+    """Parse a single GSTR-2B file and return (df, fmt)."""
     raw = load_raw(uploaded_file)
     fmt = detect_file_format(raw, uploaded_file.name)
-    logger.info(f"GSTR-2B format detected: {fmt}")        # log only — no UI badge
+    logger.info(f"GSTR-2B format detected: {fmt} for {uploaded_file.name}")
     if fmt == "gstr2b_excel":
         return parse_gstr2b_excel(raw), fmt
     uploaded_file.seek(0)
     df = pd.read_csv(uploaded_file) if uploaded_file.name.lower().endswith(".csv") else \
          pd.read_excel(uploaded_file)
     return parse_gstr2b(df), "standard"
+
+# FEATURE 2: Month column helper
+def add_month_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Add Month column derived from Invoice_Date."""
+    if df.empty or "Invoice_Date" not in df.columns:
+        df["Month"] = ""
+        return df
+    df = df.copy()
+    df["Month"] = pd.to_datetime(df["Invoice_Date"], errors="coerce") \
+                    .dt.to_period("M").astype(str)
+    return df
 
 # =================== SAFE EXCEL HELPERS =================== #
 
@@ -218,13 +191,29 @@ def safe_write_text(ws, row, col, value, fmt):
 # =================== PROCESS =================== #
 
 if st.button("🚀 Run Reconciliation", use_container_width=True, type="primary"):
-    if not books_file or not gstr_file:
-        st.error("Please upload both files.")
+    if not books_file or not gstr_files:
+        st.error("Please upload both Books and at least one GSTR-2B file.")
     else:
         try:
             with st.spinner("Processing files…"):
+                # Parse Books
                 books_clean, no_itc, issues, books_fmt = parse_books(books_file)
-                gstr_clean, gstr_fmt                   = parse_gstr(gstr_file)
+
+                # FEATURE 1: Parse and combine multiple GSTR-2B files
+                gstr_parts = []
+                for gf in gstr_files:
+                    gdf, gfmt = parse_gstr_single(gf)
+                    gdf["Source_File"] = gf.name   # tag source file name
+                    gstr_parts.append(gdf)
+                    logger.info(f"Parsed {gf.name}: {len(gdf)} rows")
+
+                gstr_clean = pd.concat(gstr_parts, ignore_index=True) if gstr_parts else pd.DataFrame()
+
+                # FEATURE 2: Add Month columns
+                books_clean = add_month_column(books_clean)
+                gstr_clean  = add_month_column(gstr_clean)
+
+                # Reconcile (engine works on standard columns, Month is extra)
                 results = reconcile(gstr_clean, books_clean, tolerance)
                 results.update({
                     "no_itc":    no_itc,
@@ -232,10 +221,13 @@ if st.button("🚀 Run Reconciliation", use_container_width=True, type="primary"
                     "books_raw": books_clean,
                     "gstr_raw":  gstr_clean,
                     "books_fmt": books_fmt,
-                    "gstr_fmt":  gstr_fmt,
+                    "gstr_fmts": [gf.name for gf in gstr_files],
+                    "n_gstr_files": len(gstr_files),
                 })
                 st.session_state["results"] = results
-            st.success("✅ Reconciliation completed!")
+
+            n = len(gstr_files)
+            st.success(f"✅ Reconciliation completed! ({n} GSTR-2B file{'s' if n>1 else ''} processed)")
         except Exception as e:
             logger.error(f"Reconciliation failed: {e}", exc_info=True)
             st.error(f"Error: {str(e)}")
@@ -247,7 +239,7 @@ if "results" not in st.session_state:
 
 r   = st.session_state["results"]
 s   = r["summary"]
-tol = tolerance   # use current slider value for display logic
+tol = tolerance
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -258,7 +250,6 @@ def fmt_date(val) -> str:
         return ""
 
 def coerce_str_cols(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert only truly missing values (None/NaN) to empty strings. Real data is untouched."""
     df = df.copy()
     for col in df.select_dtypes(include=["object"]).columns:
         df[col] = df[col].apply(lambda v: "" if (v is None or pd.isna(v)) else str(v))
@@ -272,6 +263,20 @@ def apply_filters(df: pd.DataFrame, f_gstin: str, f_supplier: str) -> pd.DataFra
             if col in df.columns:
                 df = df[df[col].str.contains(f_supplier, case=False, na=False)]
                 break
+    return df
+
+# FEATURE 5: Action Required mapping
+ACTION_MAP = {
+    "❌ Missing in GST":   "Follow up with supplier",
+    "📕 Missing in Books": "Record purchase entry",
+    "⚠️ Tax Difference":   "Verify invoice values",
+    "✅ Matched":          "No action",
+}
+
+def add_action_column(df: pd.DataFrame) -> pd.DataFrame:
+    if "Remarks" in df.columns:
+        df = df.copy()
+        df["Action Required"] = df["Remarks"].map(ACTION_MAP).fillna("")
     return df
 
 # ── DATA ISSUES ──────────────────────────────────────────────────────────────
@@ -291,22 +296,20 @@ if not all_issues.empty:
     with st.expander("🔍 View Data Issues", expanded=False):
         df_iss = all_issues.copy()
         if "Invoice_Date" in df_iss.columns:
-            df_iss["Invoice_Date"] = pd.to_datetime(df_iss["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
+            df_iss["Invoice_Date"] = pd.to_datetime(
+                df_iss["Invoice_Date"], errors="coerce"
+            ).dt.strftime("%d-%b-%Y").fillna("")
         df_iss = coerce_str_cols(df_iss)
         cols_order = ["Issue"] + [c for c in df_iss.columns if c != "Issue"]
-        safe_dataframe(
-            df_iss[cols_order],
-            column_config={
-                "Issue":         st.column_config.TextColumn("Issue",        width=220),
-                "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
-                "Trade_Name":    st.column_config.TextColumn("Trade Name",   width=280),
-                "Invoice_No":    st.column_config.TextColumn("Invoice No",   width=150),
-                "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
-                "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
-                "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
-            },
-            empty_message="No issues to display.",
-        )
+        safe_dataframe(df_iss[cols_order], column_config={
+            "Issue":         st.column_config.TextColumn("Issue",        width=220),
+            "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
+            "Trade_Name":    st.column_config.TextColumn("Trade Name",   width=280),
+            "Invoice_No":    st.column_config.TextColumn("Invoice No",   width=150),
+            "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
+            "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
+            "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
+        }, empty_message="No issues to display.")
         ic = df_iss["Issue"].value_counts().reset_index()
         ic.columns = ["Issue Type", "Count"]
         if not ic.empty:
@@ -315,6 +318,10 @@ if not all_issues.empty:
 # ── QUICK INSIGHT CARDS ───────────────────────────────────────────────────────
 
 st.markdown("## 📊 Reconciliation Summary")
+
+n_files = r.get("n_gstr_files", 1)
+if n_files > 1:
+    st.caption(f"Across {n_files} GSTR-2B files: {', '.join(r.get('gstr_fmts', []))}")
 
 c1, c2, c3, c4 = st.columns(4)
 cards = [
@@ -330,123 +337,251 @@ for _col, _css, _label, _value in cards:
             <div class="card-number">{_value}</div>
             <div class="card-label">{_label}</div>
         </div>""", unsafe_allow_html=True)
-del _col, _css, _label, _value  # prevent magic display of loop variables
+del _col, _css, _label, _value
 
-# ── FILTER BAR ────────────────────────────────────────────────────────────────
+# ── FEATURE 3 & 6: MONTH-WISE SUMMARY ────────────────────────────────────────
+
+def _build_month_summary(books_raw, gstr_raw, missing_2b, missing_books, matched_df):
+    """Build month-wise ITC summary. Runs in function scope."""
+    rows = []
+    # Collect all months from both sources
+    all_months = set()
+    for df in [books_raw, gstr_raw]:
+        if not df.empty and "Month" in df.columns:
+            all_months.update(df["Month"].dropna().unique())
+    all_months.discard("")
+    all_months.discard("NaT")
+
+    for month in sorted(all_months):
+        b_tax = books_raw[books_raw["Month"] == month]["TOTAL_TAX"].sum() \
+                if not books_raw.empty and "Month" in books_raw.columns else 0
+        g_tax = gstr_raw[gstr_raw["Month"] == month]["TOTAL_TAX"].sum() \
+                if not gstr_raw.empty and "Month" in gstr_raw.columns else 0
+
+        # Missing in 2B — books invoices not in GSTR (use Invoice_Date month)
+        m2b_count = 0
+        if not missing_2b.empty and "Invoice_Date" in missing_2b.columns:
+            m2b = missing_2b.copy()
+            m2b["Month"] = pd.to_datetime(m2b["Invoice_Date"], errors="coerce") \
+                             .dt.to_period("M").astype(str)
+            m2b_count = int((m2b["Month"] == month).sum())
+
+        mb_count = 0
+        if not missing_books.empty and "Invoice_Date" in missing_books.columns:
+            mb = missing_books.copy()
+            mb["Month"] = pd.to_datetime(mb["Invoice_Date"], errors="coerce") \
+                            .dt.to_period("M").astype(str)
+            mb_count = int((mb["Month"] == month).sum())
+
+        matched_count = 0
+        if not matched_df.empty:
+            for col in ["Invoice_Date_2B", "Invoice_Date_Books"]:
+                if col in matched_df.columns:
+                    mc = matched_df.copy()
+                    mc["_m"] = pd.to_datetime(mc[col], errors="coerce") \
+                                  .dt.to_period("M").astype(str)
+                    matched_count = int((mc["_m"] == month).sum())
+                    break
+
+        rows.append({
+            "Month":          month,
+            "Books ITC":      round(float(b_tax), 2),
+            "GSTR ITC":       round(float(g_tax), 2),
+            "Difference":     round(float(g_tax) - float(b_tax), 2),
+            "Missing 2B":     m2b_count,
+            "Missing Books":  mb_count,
+            "Matched":        matched_count,
+        })
+
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    # Sort chronologically
+    df["_sort"] = pd.to_datetime(df["Month"], format="%Y-%m", errors="coerce")
+    df = df.sort_values("_sort").drop(columns=["_sort"]).reset_index(drop=True)
+    return df
+
+month_summary = _build_month_summary(
+    r["books_raw"], r["gstr_raw"],
+    r.get("missing_2b", pd.DataFrame()),
+    r.get("missing_books", pd.DataFrame()),
+    r.get("matched", pd.DataFrame()),
+)
+
+if not month_summary.empty:
+    st.markdown("## 📅 Month-wise Summary")
+
+    # FEATURE 7: Bar chart
+    chart_data = month_summary.set_index("Month")[["Books ITC", "GSTR ITC"]]
+    if not chart_data.empty:
+        st.bar_chart(chart_data, color=["#166534", "#1D4ED8"], height=220)
+
+    safe_dataframe(
+        month_summary,
+        column_config={
+            "Month":         st.column_config.TextColumn("Month",        width=100),
+            "Books ITC":     st.column_config.NumberColumn("📚 Books ITC",   width=130, format="%.2f"),
+            "GSTR ITC":      st.column_config.NumberColumn("📊 GSTR ITC",    width=130, format="%.2f"),
+            "Difference":    st.column_config.NumberColumn("📉 Difference",  width=120, format="%.2f"),
+            "Missing 2B":    st.column_config.NumberColumn("❌ Missing 2B",  width=110),
+            "Missing Books": st.column_config.NumberColumn("📕 Missing Books",width=120),
+            "Matched":       st.column_config.NumberColumn("✅ Matched",     width=100),
+        },
+        caption=f"{len(month_summary)} month(s) of data",
+    )
+
+# ── FEATURE 4: MONTH DRILL-DOWN FILTER ────────────────────────────────────────
+
+sorted_months = list(month_summary["Month"]) if not month_summary.empty else []
 
 st.markdown("### 🔍 Filter Results")
-with st.container():
-    fc1, fc2, fc3 = st.columns(3)
-    with fc1:
-        f_gstin    = st.text_input("Filter by GSTIN",     placeholder="Enter GSTIN…",         label_visibility="visible")
-    with fc2:
-        f_supplier = st.text_input("Filter by Supplier",  placeholder="Enter supplier name…",  label_visibility="visible")
-    with fc3:
-        f_status   = st.multiselect(
-            "Filter by Status",
-            options=["✅ Matched", "❌ Missing in GST", "📕 Missing in Books", "⚠️ Tax Difference"],
-            default=[],
-            placeholder="All statuses…",
-        )
+drill_col, gstin_col, sup_col, status_col = st.columns([1.5, 1.5, 1.5, 1.5])
+
+with drill_col:
+    if sorted_months:
+        month_options = ["All months"] + sorted_months
+        selected_month = st.selectbox("📅 Filter by Month", month_options)
+    else:
+        selected_month = "All months"
+        st.selectbox("📅 Filter by Month", ["All months"], disabled=True)
+
+with gstin_col:
+    f_gstin = st.text_input("Filter by GSTIN", placeholder="Enter GSTIN…")
+with sup_col:
+    f_supplier = st.text_input("Filter by Supplier", placeholder="Enter supplier name…")
+with status_col:
+    f_status = st.multiselect(
+        "Filter by Status",
+        options=["✅ Matched", "❌ Missing in GST", "📕 Missing in Books", "⚠️ Tax Difference"],
+        default=[], placeholder="All statuses…",
+    )
+
+def apply_month_filter(df: pd.DataFrame, month_col: str = "Month") -> pd.DataFrame:
+    """Filter rows to selected_month. Applies to df that already has a Month column."""
+    if selected_month == "All months" or df.empty:
+        return df
+    if month_col in df.columns:
+        return df[df[month_col] == selected_month]
+    return df
+
+def apply_month_filter_by_date(df: pd.DataFrame, date_col: str = "Invoice_Date") -> pd.DataFrame:
+    """Filter rows by deriving Month from a date column."""
+    if selected_month == "All months" or df.empty:
+        return df
+    if date_col not in df.columns:
+        return df
+    df = df.copy()
+    df["_m"] = pd.to_datetime(df[date_col], errors="coerce").dt.to_period("M").astype(str)
+    result = df[df["_m"] == selected_month].drop(columns=["_m"])
+    return result
 
 # ── BUILD INVOICE LEVEL DETAIL ────────────────────────────────────────────────
 
 trade_name_map = r.get("trade_name_mapping", {})
+
 def _build_detail_df(books_raw, gstr_raw, trade_name_map, tol, fmt_date_fn):
-    """Build invoice-level detail dataframe. Runs in function scope to prevent
-    iterrows() loop variable leaking into module scope and triggering Streamlit magic display."""
-    data    = []
-    seen    = set()
+    """Build invoice-level detail. Function scope prevents loop var magic display."""
+    data = []
+    seen = set()
 
     for _, row in books_raw.iterrows():
         key = f"{row['GSTIN']}|{row['Invoice_No']}"
-        if key in seen:
-            continue
+        if key in seen: continue
         seen.add(key)
         gstin    = row["GSTIN"]
         supplier = trade_name_map.get(gstin, row["Trade_Name"])
+        month    = row.get("Month", "")
         m_row    = None
         if not gstr_raw.empty:
             m = gstr_raw[(gstr_raw["GSTIN"] == gstin) & (gstr_raw["Invoice_No"] == row["Invoice_No"])]
-            if not m.empty:
-                m_row = m.iloc[0]
+            if not m.empty: m_row = m.iloc[0]
+
         if m_row is not None:
             diff   = float(m_row["TOTAL_TAX"]) - float(row["TOTAL_TAX"])
             remark = "✅ Matched" if abs(diff) <= tol else "⚠️ Tax Difference"
-            data.append({"GSTIN": gstin, "Supplier": supplier,
+            data.append({"GSTIN": gstin, "Supplier": supplier, "Month": month,
                 "Invoice No": row["Invoice_No"], "Date": fmt_date_fn(row["Invoice_Date"]),
                 "ITC Books": float(row["TOTAL_TAX"]), "ITC 2B": float(m_row["TOTAL_TAX"]),
-                "Difference": diff, "Remarks": remark})
+                "Difference": diff, "Remarks": remark,
+                "Action Required": ACTION_MAP.get(remark, "")})
         else:
-            data.append({"GSTIN": gstin, "Supplier": supplier,
+            remark = "❌ Missing in GST"
+            data.append({"GSTIN": gstin, "Supplier": supplier, "Month": month,
                 "Invoice No": row["Invoice_No"], "Date": fmt_date_fn(row["Invoice_Date"]),
                 "ITC Books": float(row["TOTAL_TAX"]), "ITC 2B": 0.0,
-                "Difference": -float(row["TOTAL_TAX"]), "Remarks": "❌ Missing in GST"})
+                "Difference": -float(row["TOTAL_TAX"]), "Remarks": remark,
+                "Action Required": ACTION_MAP.get(remark, "")})
 
     for _, row in gstr_raw.iterrows():
         key = f"{row['GSTIN']}|{row['Invoice_No']}"
-        if key in seen:
-            continue
+        if key in seen: continue
         seen.add(key)
+        remark = "📕 Missing in Books"
         data.append({"GSTIN": row["GSTIN"],
             "Supplier": trade_name_map.get(row["GSTIN"], row["Trade_Name"]),
+            "Month": row.get("Month", ""),
             "Invoice No": row["Invoice_No"], "Date": fmt_date_fn(row["Invoice_Date"]),
             "ITC Books": 0.0, "ITC 2B": float(row["TOTAL_TAX"]),
-            "Difference": float(row["TOTAL_TAX"]), "Remarks": "📕 Missing in Books"})
+            "Difference": float(row["TOTAL_TAX"]), "Remarks": remark,
+            "Action Required": ACTION_MAP.get(remark, "")})
 
     return pd.DataFrame(data).sort_values(["Supplier", "Date"]) if data else pd.DataFrame()
 
 detail_df = _build_detail_df(r["books_raw"], r["gstr_raw"], trade_name_map, tol, fmt_date)
 
 def filter_detail(df):
-    """Apply GSTIN, supplier, and status filters to detail dataframe."""
-    if df.empty:
-        return df
+    if df.empty: return df
+    df = apply_month_filter(df)
     if f_gstin:
         df = df[df["GSTIN"].str.contains(f_gstin, case=False, na=False)]
     if f_supplier:
         df = df[df["Supplier"].str.contains(f_supplier, case=False, na=False)]
     if f_status:
         status_map = {
-            "✅ Matched":           "✅ Matched",
-            "❌ Missing in GST":    "❌ Missing in GST",
-            "📕 Missing in Books":  "📕 Missing in Books",
-            "⚠️ Tax Difference":    "⚠️ Tax Difference",
+            "✅ Matched":          "✅ Matched",
+            "❌ Missing in GST":   "❌ Missing in GST",
+            "📕 Missing in Books": "📕 Missing in Books",
+            "⚠️ Tax Difference":   "⚠️ Tax Difference",
         }
         allowed = [status_map[s] for s in f_status if s in status_map]
         df = df[df["Remarks"].isin(allowed)]
     return df
 
+# Column configs
 DETAIL_COL_CFG = {
-    "GSTIN":       st.column_config.TextColumn("GSTIN",       width=180),
-    "Supplier":    st.column_config.TextColumn("Supplier",    width=280),
-    "Invoice No":  st.column_config.TextColumn("Invoice No",  width=150),
-    "Date":        st.column_config.TextColumn("Date",        width=115),
-    "ITC Books":   st.column_config.NumberColumn("📚 Books",  width=120, format="%.2f"),
-    "ITC 2B":      st.column_config.NumberColumn("📊 GSTR-2B",width=120, format="%.2f"),
-    "Difference":  st.column_config.NumberColumn("📉 Diff",   width=110, format="%.2f"),
-    "Remarks":     st.column_config.TextColumn("Remarks",     width=170),
+    "Month":           st.column_config.TextColumn("Month",           width=90),
+    "GSTIN":           st.column_config.TextColumn("GSTIN",           width=180),
+    "Supplier":        st.column_config.TextColumn("Supplier",        width=250),
+    "Invoice No":      st.column_config.TextColumn("Invoice No",      width=140),
+    "Date":            st.column_config.TextColumn("Date",            width=105),
+    "ITC Books":       st.column_config.NumberColumn("📚 Books",      width=110, format="%.2f"),
+    "ITC 2B":          st.column_config.NumberColumn("📊 GSTR-2B",    width=110, format="%.2f"),
+    "Difference":      st.column_config.NumberColumn("📉 Diff",       width=100, format="%.2f"),
+    "Remarks":         st.column_config.TextColumn("Remarks",         width=160),
+    "Action Required": st.column_config.TextColumn("Action Required", width=180),
 }
 
 STD_BOOK_CFG = {
-    "GSTIN":         st.column_config.TextColumn("GSTIN",         width=180),
-    "Trade_Name":    st.column_config.TextColumn("Trade Name",    width=280),
-    "Invoice_No":    st.column_config.TextColumn("Invoice No",    width=150),
-    "Invoice_Date":  st.column_config.TextColumn("Invoice Date",  width=115),
-    "Taxable_Value": st.column_config.NumberColumn("Taxable",     width=110, format="%.2f"),
-    "CGST":          st.column_config.NumberColumn("CGST",        width=100, format="%.2f"),
-    "SGST":          st.column_config.NumberColumn("SGST",        width=100, format="%.2f"),
-    "IGST":          st.column_config.NumberColumn("IGST",        width=100, format="%.2f"),
-    "CESS":          st.column_config.NumberColumn("CESS",        width=80,  format="%.2f"),
-    "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",   width=110, format="%.2f"),
+    "GSTIN":         st.column_config.TextColumn("GSTIN",          width=180),
+    "Trade_Name":    st.column_config.TextColumn("Trade Name",     width=260),
+    "Invoice_No":    st.column_config.TextColumn("Invoice No",     width=140),
+    "Invoice_Date":  st.column_config.TextColumn("Invoice Date",   width=110),
+    "Month":         st.column_config.TextColumn("Month",          width=90),
+    "Taxable_Value": st.column_config.NumberColumn("Taxable",      width=110, format="%.2f"),
+    "CGST":          st.column_config.NumberColumn("CGST",         width=100, format="%.2f"),
+    "SGST":          st.column_config.NumberColumn("SGST",         width=100, format="%.2f"),
+    "IGST":          st.column_config.NumberColumn("IGST",         width=100, format="%.2f"),
+    "CESS":          st.column_config.NumberColumn("CESS",         width=80,  format="%.2f"),
+    "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",    width=110, format="%.2f"),
     "Invoice_Value": st.column_config.NumberColumn("Invoice Value",width=120, format="%.2f"),
+    "Source_File":   st.column_config.TextColumn("Source File",    width=160),
 }
 
 MISS_CFG = {
     "GSTIN":      st.column_config.TextColumn("GSTIN",      width=180),
-    "Supplier":   st.column_config.TextColumn("Supplier",   width=280),
-    "Invoice No": st.column_config.TextColumn("Invoice No", width=150),
-    "Date":       st.column_config.TextColumn("Date",       width=115),
+    "Supplier":   st.column_config.TextColumn("Supplier",   width=260),
+    "Invoice No": st.column_config.TextColumn("Invoice No", width=140),
+    "Date":       st.column_config.TextColumn("Date",       width=105),
     "Taxable":    st.column_config.NumberColumn("Taxable",  width=110, format="%.2f"),
     "ITC":        st.column_config.NumberColumn("ITC",      width=110, format="%.2f"),
 }
@@ -462,7 +597,7 @@ tabs = st.tabs([
     "📋 Supplier Summary",
 ])
 
-# Tab 0: Invoice Level Details
+# Tab 0: Invoice Level Details (with Month, Action Required)
 with tabs[0]:
     if not detail_df.empty:
         display_df = filter_detail(detail_df.copy())
@@ -479,14 +614,14 @@ with tabs[0]:
 with tabs[1]:
     if not r["books_raw"].empty:
         df_b = r["books_raw"].copy()
-        df_b["Invoice_Date"] = pd.to_datetime(df_b["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
+        df_b["Invoice_Date"] = pd.to_datetime(
+            df_b["Invoice_Date"], errors="coerce"
+        ).dt.strftime("%d-%b-%Y").fillna("")
+        df_b = apply_month_filter(df_b)
         df_b = apply_filters(coerce_str_cols(df_b), f_gstin, f_supplier)
-        safe_dataframe(
-            df_b,
-            column_config=STD_BOOK_CFG,
+        safe_dataframe(df_b, column_config=STD_BOOK_CFG,
             empty_message="No Books data matches the current filters.",
-            caption=f"{len(df_b)} records",
-        )
+            caption=f"{len(df_b)} records")
     else:
         st.info("No Books data loaded.")
 
@@ -494,46 +629,51 @@ with tabs[1]:
 with tabs[2]:
     if not r["gstr_raw"].empty:
         df_g = r["gstr_raw"].copy()
-        df_g["Invoice_Date"] = pd.to_datetime(df_g["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
+        df_g["Invoice_Date"] = pd.to_datetime(
+            df_g["Invoice_Date"], errors="coerce"
+        ).dt.strftime("%d-%b-%Y").fillna("")
+        df_g = apply_month_filter(df_g)
         df_g = apply_filters(coerce_str_cols(df_g), f_gstin, f_supplier)
-        safe_dataframe(
-            df_g,
-            column_config=STD_BOOK_CFG,
+        src_note = f" · Source file shown in last column" if "Source_File" in df_g.columns else ""
+        safe_dataframe(df_g, column_config=STD_BOOK_CFG,
             empty_message="No GSTR-2B data matches the current filters.",
-            caption=f"{len(df_g)} records",
-        )
+            caption=f"{len(df_g)} records{src_note}")
     else:
         st.info("No GSTR-2B data loaded.")
 
 # Tab 3: Missing in 2B
 with tabs[3]:
     if not r["missing_2b"].empty:
-        df_m = r["missing_2b"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]].copy()
-        df_m["Invoice_Date"] = pd.to_datetime(df_m["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
-        df_m.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
+        df_m = r["missing_2b"][
+            ["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","TOTAL_TAX"]
+        ].copy()
+        df_m["Invoice_Date"] = pd.to_datetime(
+            df_m["Invoice_Date"], errors="coerce"
+        ).dt.strftime("%d-%b-%Y").fillna("")
+        df_m.columns = ["GSTIN","Supplier","Invoice No","Date","Taxable","ITC"]
+        df_m = apply_month_filter_by_date(df_m, "Date")
         df_m = apply_filters(coerce_str_cols(df_m), f_gstin, f_supplier)
-        safe_dataframe(
-            df_m,
-            column_config=MISS_CFG,
+        safe_dataframe(df_m, column_config=MISS_CFG,
             empty_message="No missing invoices match the current filters.",
-            caption=f"💰 ITC at Risk: ₹{df_m['ITC'].sum():,.2f} across {len(df_m)} invoices",
-        )
+            caption=f"💰 ITC at Risk: ₹{df_m['ITC'].sum():,.2f} across {len(df_m)} invoices")
     else:
         st.success("✅ No invoices missing in GSTR-2B.")
 
 # Tab 4: Missing in Books
 with tabs[4]:
     if not r["missing_books"].empty:
-        df_mb = r["missing_books"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]].copy()
-        df_mb["Invoice_Date"] = pd.to_datetime(df_mb["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
-        df_mb.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "ITC"]
+        df_mb = r["missing_books"][
+            ["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","TOTAL_TAX"]
+        ].copy()
+        df_mb["Invoice_Date"] = pd.to_datetime(
+            df_mb["Invoice_Date"], errors="coerce"
+        ).dt.strftime("%d-%b-%Y").fillna("")
+        df_mb.columns = ["GSTIN","Supplier","Invoice No","Date","Taxable","ITC"]
+        df_mb = apply_month_filter_by_date(df_mb, "Date")
         df_mb = apply_filters(coerce_str_cols(df_mb), f_gstin, f_supplier)
-        safe_dataframe(
-            df_mb,
-            column_config=MISS_CFG,
+        safe_dataframe(df_mb, column_config=MISS_CFG,
             empty_message="No missing invoices match the current filters.",
-            caption=f"{len(df_mb)} invoices in GSTR-2B not found in Books",
-        )
+            caption=f"{len(df_mb)} invoices in GSTR-2B not found in Books")
     else:
         st.success("✅ No invoices missing in Books.")
 
@@ -543,12 +683,14 @@ with tabs[5]:
     if not r["books_raw"].empty: all_gstins.update(r["books_raw"]["GSTIN"].unique())
     if not r["gstr_raw"].empty:  all_gstins.update(r["gstr_raw"]["GSTIN"].unique())
     sup_rows = []
-    for gstin in all_gstins:
-        ib = r["books_raw"][r["books_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum() if not r["books_raw"].empty else 0
-        ig = r["gstr_raw"][r["gstr_raw"]["GSTIN"] == gstin]["TOTAL_TAX"].sum()   if not r["gstr_raw"].empty  else 0
+    for _gstin in all_gstins:
+        _b_raw = apply_month_filter(r["books_raw"], "Month") if not r["books_raw"].empty else pd.DataFrame()
+        _g_raw = apply_month_filter(r["gstr_raw"],  "Month") if not r["gstr_raw"].empty  else pd.DataFrame()
+        ib = _b_raw[_b_raw["GSTIN"] == _gstin]["TOTAL_TAX"].sum() if not _b_raw.empty else 0
+        ig = _g_raw[_g_raw["GSTIN"] == _gstin]["TOTAL_TAX"].sum() if not _g_raw.empty else 0
         sup_rows.append({
-            "GSTIN":            str(gstin),
-            "Supplier":         str(trade_name_map.get(gstin, "Unknown")),
+            "GSTIN":            str(_gstin),
+            "Supplier":         str(trade_name_map.get(_gstin, "Unknown")),
             "ITC as per Books": round(float(ib), 2),
             "ITC as per 2B":    round(float(ig), 2),
             "ITC Difference":   round(float(ig) - float(ib), 2),
@@ -560,25 +702,25 @@ with tabs[5]:
             sup_df = sup_df[sup_df["GSTIN"].str.contains(f_gstin, case=False, na=False)]
         if f_supplier:
             sup_df = sup_df[sup_df["Supplier"].str.contains(f_supplier, case=False, na=False)]
-        safe_dataframe(
-            sup_df,
-            column_config={
-                "GSTIN":            st.column_config.TextColumn("GSTIN",       width=180),
-                "Supplier":         st.column_config.TextColumn("Supplier",    width=280),
-                "ITC as per Books": st.column_config.NumberColumn("📚 Books",  width=140, format="%.2f"),
-                "ITC as per 2B":    st.column_config.NumberColumn("📊 GSTR-2B",width=140, format="%.2f"),
-                "ITC Difference":   st.column_config.NumberColumn("📉 Diff",   width=130, format="%.2f"),
-            },
-            empty_message="No supplier data matches the current filters.",
-            caption=f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}" if not sup_df.empty else None,
-        )
+        safe_dataframe(sup_df, column_config={
+            "GSTIN":            st.column_config.TextColumn("GSTIN",        width=180),
+            "Supplier":         st.column_config.TextColumn("Supplier",     width=260),
+            "ITC as per Books": st.column_config.NumberColumn("📚 Books",   width=140, format="%.2f"),
+            "ITC as per 2B":    st.column_config.NumberColumn("📊 GSTR-2B", width=140, format="%.2f"),
+            "ITC Difference":   st.column_config.NumberColumn("📉 Diff",    width=130, format="%.2f"),
+        }, empty_message="No supplier data matches the current filters.",
+           caption=f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}" if not sup_df.empty else None)
 
 # ── ZERO ITC ─────────────────────────────────────────────────────────────────
 
 if not r["no_itc"].empty:
-    df_ni = r["no_itc"][["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "Invoice_Value"]].copy()
-    df_ni["Invoice_Date"] = pd.to_datetime(df_ni["Invoice_Date"], errors="coerce").dt.strftime("%d-%b-%Y").fillna("")
-    df_ni.columns = ["GSTIN", "Supplier", "Invoice No", "Date", "Taxable", "Invoice Value"]
+    df_ni = r["no_itc"][
+        ["GSTIN","Trade_Name","Invoice_No","Invoice_Date","Taxable_Value","Invoice_Value"]
+    ].copy()
+    df_ni["Invoice_Date"] = pd.to_datetime(
+        df_ni["Invoice_Date"], errors="coerce"
+    ).dt.strftime("%d-%b-%Y").fillna("")
+    df_ni.columns = ["GSTIN","Supplier","Invoice No","Date","Taxable","Invoice Value"]
     df_ni = coerce_str_cols(df_ni)
     df_ni = df_ni[
         (df_ni["Invoice No"].astype(str).str.strip() != "") &
@@ -588,35 +730,29 @@ if not r["no_itc"].empty:
     if not df_ni.empty:
         st.divider()
         st.markdown("## 🟡 Zero ITC Invoices")
-        safe_dataframe(
-            df_ni,
-            column_config={
-                "GSTIN":         st.column_config.TextColumn("GSTIN",          width=180),
-                "Supplier":      st.column_config.TextColumn("Supplier",       width=280),
-                "Invoice No":    st.column_config.TextColumn("Invoice No",     width=150),
-                "Date":          st.column_config.TextColumn("Date",           width=115),
-                "Taxable":       st.column_config.NumberColumn("Taxable",      width=110, format="%.2f"),
-                "Invoice Value": st.column_config.NumberColumn("Invoice Value",width=120, format="%.2f"),
-            },
-            empty_message="No zero ITC invoices.",
-            caption=f"{len(df_ni)} invoices with zero tax",
-        )
+        safe_dataframe(df_ni, column_config={
+            "GSTIN":         st.column_config.TextColumn("GSTIN",          width=180),
+            "Supplier":      st.column_config.TextColumn("Supplier",       width=260),
+            "Invoice No":    st.column_config.TextColumn("Invoice No",     width=140),
+            "Date":          st.column_config.TextColumn("Date",           width=105),
+            "Taxable":       st.column_config.NumberColumn("Taxable",      width=110, format="%.2f"),
+            "Invoice Value": st.column_config.NumberColumn("Invoice Value",width=120, format="%.2f"),
+        }, empty_message="No zero ITC invoices.", caption=f"{len(df_ni)} invoices with zero tax")
 
 # ── EXCEL EXPORT HELPERS ──────────────────────────────────────────────────────
 
 def _build_workbook_formats(wb):
     return {
-        "title":  wb.add_format({'bold': True, 'font_size': 14, 'font_name': 'Aptos Narrow'}),
-        "header": wb.add_format({'bold': True, 'font_name': 'Aptos Narrow',
-                                  'font_color': 'white', 'bg_color': '#1F4E78',
-                                  'align': 'center', 'valign': 'vcenter', 'border': 1}),
-        "number": wb.add_format({'font_name': 'Aptos Narrow', 'num_format': '#,##0.00'}),
-        "date":   wb.add_format({'font_name': 'Aptos Narrow', 'num_format': 'dd-mmm-yyyy'}),
-        "text":   wb.add_format({'font_name': 'Aptos Narrow'}),
+        "title":  wb.add_format({'bold':True,'font_size':14,'font_name':'Aptos Narrow'}),
+        "header": wb.add_format({'bold':True,'font_name':'Aptos Narrow',
+                                  'font_color':'white','bg_color':'#1F4E78',
+                                  'align':'center','valign':'vcenter','border':1}),
+        "number": wb.add_format({'font_name':'Aptos Narrow','num_format':'#,##0.00'}),
+        "date":   wb.add_format({'font_name':'Aptos Narrow','num_format':'dd-mmm-yyyy'}),
+        "text":   wb.add_format({'font_name':'Aptos Narrow'}),
     }
 
 def _xls_write_date(ws, r, c, val, fmts):
-    """Write a date cell — returns None so Streamlit magic display never sees a 0."""
     try:
         dt = pd.to_datetime(val)
         if pd.notna(dt):
@@ -627,7 +763,6 @@ def _xls_write_date(ws, r, c, val, fmts):
         safe_write_text(ws, r, c, str(val) if pd.notna(val) else "", fmts["text"])
 
 def _xls_write_header(ws, row, col, text, fmt):
-    """Write a header cell — return value discarded via explicit assignment."""
     _ = ws.write(row, col, text, fmt)
 
 def _write_sheet(ws, title, headers, data_rows, col_types, fmts):
@@ -652,20 +787,19 @@ def _write_sheet(ws, title, headers, data_rows, col_types, fmts):
     _ = ws.autofit()
 
 BOOK_CT = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date",
-           "Taxable_Value":"number","CGST":"number","SGST":"number","IGST":"number",
-           "CESS":"number","TOTAL_TAX":"number","Invoice_Value":"number"}
+           "Month":"text","Taxable_Value":"number","CGST":"number","SGST":"number",
+           "IGST":"number","CESS":"number","TOTAL_TAX":"number","Invoice_Value":"number",
+           "Source_File":"text"}
 MISS_CT  = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date",
             "Taxable_Value":"number","TOTAL_TAX":"number"}
 
-# ── PRE-GENERATE BOTH EXCEL BUFFERS (outside st.columns to avoid rendering artifacts) ──
-
-def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol):
-    """Build the full reconciliation Excel report and return bytes."""
+def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol, month_summary):
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
         wb   = writer.book
         fmts = _build_workbook_formats(wb)
 
+        # Summary
         summary_df = post_processing_cleaner(pd.DataFrame({
             "Particulars": ["ITC - Books","ITC - GSTR-2B","Difference","ITC at Risk","Match %",
                             "Total Books","Total GSTR","Matched","Tax Diff","Missing 2B","Missing Books"],
@@ -677,15 +811,26 @@ def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol):
                      list(summary_df.columns), summary_df.values.tolist(),
                      {"Particulars":"text","Value":"number"}, fmts)
 
+        # Month-wise summary sheet
+        if not month_summary.empty:
+            ms_ct = {"Month":"text","Books ITC":"number","GSTR ITC":"number",
+                     "Difference":"number","Missing 2B":"number","Missing Books":"number","Matched":"number"}
+            _write_sheet(wb.add_worksheet("Month-wise Summary"), "Month-wise ITC Summary",
+                         list(month_summary.columns), month_summary.values.tolist(), ms_ct, fmts)
+
         if not r["books_raw"].empty:
             bdf = post_processing_cleaner(r["books_raw"].copy())
+            bdf_cols = [c for c in BOOK_CT if c in bdf.columns]
             _write_sheet(wb.add_worksheet("Books"), "Books Data",
-                         list(bdf.columns), bdf.values.tolist(), BOOK_CT, fmts)
+                         bdf_cols, bdf[bdf_cols].values.tolist(),
+                         {c: BOOK_CT[c] for c in bdf_cols}, fmts)
 
         if not r["gstr_raw"].empty:
             gdf = post_processing_cleaner(r["gstr_raw"].copy())
+            gdf_cols = [c for c in BOOK_CT if c in gdf.columns]
             _write_sheet(wb.add_worksheet("GSTR-2B"), "GSTR-2B Data",
-                         list(gdf.columns), gdf.values.tolist(), BOOK_CT, fmts)
+                         gdf_cols, gdf[gdf_cols].values.tolist(),
+                         {c: BOOK_CT[c] for c in gdf_cols}, fmts)
 
         if not r["missing_2b"].empty:
             mdf = post_processing_cleaner(r["missing_2b"][list(MISS_CT)].copy())
@@ -712,20 +857,23 @@ def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol):
             ws_dd = wb.add_worksheet("Supplier Drill Down")
             _xls_write_header(ws_dd, 0, 0, "Supplier Drill Down — Invoice Level Details", fmts["title"])
             _ = ws_dd.set_row(1, 20)
-            for ci, h in enumerate(["GSTIN","Supplier","Invoice No","Invoice Date",
-                                     "ITC Books","ITC 2B","Difference","Remarks"]):
+            dd_hdrs = ["Month","GSTIN","Supplier","Invoice No","Invoice Date",
+                       "ITC Books","ITC 2B","Difference","Remarks","Action Required"]
+            for ci, h in enumerate(dd_hdrs):
                 _xls_write_header(ws_dd, 1, ci, h, fmts["header"])
             for ri, row_data in ddf.iterrows():
-                safe_write_text(ws_dd, ri+2, 0, row_data["GSTIN"],       fmts["text"])
-                safe_write_text(ws_dd, ri+2, 1, row_data["Supplier"],    fmts["text"])
-                safe_write_text(ws_dd, ri+2, 2, row_data["Invoice No"],  fmts["text"])
-                _xls_write_date(ws_dd, ri+2, 3, row_data["Invoice Date"], fmts)
-                safe_write_number(ws_dd, ri+2, 4, row_data["ITC Books"],  fmts["number"])
-                safe_write_number(ws_dd, ri+2, 5, row_data["ITC 2B"],    fmts["number"])
-                safe_write_number(ws_dd, ri+2, 6, row_data["Difference"],fmts["number"])
-                safe_write_text(ws_dd, ri+2, 7, row_data["Remarks"],     fmts["text"])
-            _ = ws_dd.autofilter(1, 0, 1, 7)
-            for ci, w in enumerate([20,30,20,15,15,15,15,18]):
+                safe_write_text(ws_dd,   ri+2, 0, row_data.get("Month",""),        fmts["text"])
+                safe_write_text(ws_dd,   ri+2, 1, row_data["GSTIN"],               fmts["text"])
+                safe_write_text(ws_dd,   ri+2, 2, row_data["Supplier"],            fmts["text"])
+                safe_write_text(ws_dd,   ri+2, 3, row_data["Invoice No"],          fmts["text"])
+                _xls_write_date(ws_dd,   ri+2, 4, row_data["Invoice Date"],        fmts)
+                safe_write_number(ws_dd, ri+2, 5, row_data["ITC Books"],           fmts["number"])
+                safe_write_number(ws_dd, ri+2, 6, row_data["ITC 2B"],             fmts["number"])
+                safe_write_number(ws_dd, ri+2, 7, row_data["Difference"],          fmts["number"])
+                safe_write_text(ws_dd,   ri+2, 8, row_data["Remarks"],             fmts["text"])
+                safe_write_text(ws_dd,   ri+2, 9, row_data.get("Action Required",""), fmts["text"])
+            _ = ws_dd.autofilter(1, 0, 1, 9)
+            for ci, w in enumerate([10,20,28,18,13,13,13,13,16,20]):
                 _ = ws_dd.set_column(ci, ci, w)
             _ = ws_dd.freeze_panes(2, 0)
             _ = ws_dd.autofit()
@@ -743,7 +891,6 @@ def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol):
 
 
 def _build_issues_excel(r, all_issues, trade_name_map):
-    """Build the issues-only Excel report and return bytes."""
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
         wb2   = writer.book
@@ -754,16 +901,14 @@ def _build_issues_excel(r, all_issues, trade_name_map):
             _write_sheet(wb2.add_worksheet("Missing in 2B"), "Invoices Missing in GSTR-2B",
                          list(mdf.columns), mdf.values.tolist(), MISS_CT, fmts2)
         else:
-            wb2.add_worksheet("Missing in 2B").write(0, 0, "No invoices missing in GSTR-2B ✓",
-                                                     _build_workbook_formats(wb2)["title"])
+            _ = wb2.add_worksheet("Missing in 2B").write(0, 0, "No invoices missing in GSTR-2B ✓", fmts2["title"])
 
         if not r["missing_books"].empty:
             mbdf = post_processing_cleaner(r["missing_books"][list(MISS_CT)].copy())
             _write_sheet(wb2.add_worksheet("Missing in Books"), "Invoices Missing in Books",
                          list(mbdf.columns), mbdf.values.tolist(), MISS_CT, fmts2)
         else:
-            wb2.add_worksheet("Missing in Books").write(0, 0, "No invoices missing in Books ✓",
-                                                        fmts2["title"])
+            _ = wb2.add_worksheet("Missing in Books").write(0, 0, "No invoices missing in Books ✓", fmts2["title"])
 
         tax_diff_df = r.get("tax_diff", pd.DataFrame())
         if not tax_diff_df.empty:
@@ -787,7 +932,7 @@ def _build_issues_excel(r, all_issues, trade_name_map):
                          {"GSTIN":"text","Supplier":"text","Invoice_No":"text","Invoice_Date":"date",
                           "ITC Books":"number","ITC 2B":"number","Difference":"number"}, fmts2)
         else:
-            wb2.add_worksheet("Tax Differences").write(0, 0, "No tax differences found ✓", fmts2["title"])
+            _ = wb2.add_worksheet("Tax Differences").write(0, 0, "No tax differences found ✓", fmts2["title"])
 
         if not all_issues.empty:
             idf = all_issues.copy()
@@ -799,17 +944,17 @@ def _build_issues_excel(r, all_issues, trade_name_map):
             _write_sheet(wb2.add_worksheet("Data Issues"), "Data Quality Issues",
                          list(idf.columns), idf.values.tolist(), issue_ct, fmts2)
         else:
-            wb2.add_worksheet("Data Issues").write(0, 0, "No data issues found ✓", fmts2["title"])
+            _ = wb2.add_worksheet("Data Issues").write(0, 0, "No data issues found ✓", fmts2["title"])
 
     out.seek(0)
     return out.read()
 
 
-# Generate both Excel files before rendering any download buttons
-full_excel_bytes   = _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol)
+# Generate Excel files before rendering download buttons
+full_excel_bytes   = _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol, month_summary)
 issues_excel_bytes = _build_issues_excel(r, all_issues, trade_name_map)
 
-# ── DOWNLOAD BUTTONS — only st.download_button inside columns ─────────────────
+# ── DOWNLOAD BUTTONS ─────────────────────────────────────────────────────────
 st.divider()
 col_dl1, col_dl2 = st.columns(2)
 
@@ -831,10 +976,9 @@ with col_dl2:
         use_container_width=True,
     )
 
-# ── HIDE ANY RESIDUAL ZERO-ONLY TABLES ───────────────────────────────────────
+# ── CSS safety net ────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* Belt-and-suspenders: hide any dataframe that rendered with only empty/zero cells */
     .stDataFrame:has(td:empty) { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
