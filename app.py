@@ -416,19 +416,29 @@ if not month_summary.empty:
     if not chart_data.empty:
         st.bar_chart(chart_data, color=["#166534", "#1D4ED8"], height=220)
 
-    safe_dataframe(
-        month_summary,
-        column_config={
-            "Month":         st.column_config.TextColumn("Month",        width=100),
-            "Books ITC":     st.column_config.NumberColumn("📚 Books ITC",   width=130, format="%.2f"),
-            "GSTR ITC":      st.column_config.NumberColumn("📊 GSTR ITC",    width=130, format="%.2f"),
-            "Difference":    st.column_config.NumberColumn("📉 Difference",  width=120, format="%.2f"),
-            "Missing 2B":    st.column_config.NumberColumn("❌ Missing 2B",  width=110),
-            "Missing Books": st.column_config.NumberColumn("📕 Missing Books",width=120),
-            "Matched":       st.column_config.NumberColumn("✅ Matched",     width=100),
-        },
-        caption=f"{len(month_summary)} month(s) of data",
-    )
+    # Header row
+    h0,h1,h2,h3,h4,h5,h6,h7 = st.columns([1.2,1.4,1.4,1.4,1.0,1.2,1.0,1.0])
+    h0.markdown("**Month**");      h1.markdown("**📚 Books ITC**")
+    h2.markdown("**📊 GSTR ITC**"); h3.markdown("**📉 Difference**")
+    h4.markdown("**❌ Miss 2B**");  h5.markdown("**📕 Miss Books**")
+    h6.markdown("**✅ Matched**");  h7.markdown("**Action**")
+    st.divider()
+    for _ms_idx, _ms_row in month_summary.iterrows():
+        c0,c1,c2,c3,c4,c5,c6,c7 = st.columns([1.2,1.4,1.4,1.4,1.0,1.2,1.0,1.0])
+        c0.markdown(f"`{_ms_row['Month']}`")
+        c1.markdown(f"{_ms_row['Books ITC']:,.2f}")
+        c2.markdown(f"{_ms_row['GSTR ITC']:,.2f}")
+        _diff_color = "#991B1B" if _ms_row["Difference"] < 0 else "#166534"
+        c3.markdown(f"<span style='color:{_diff_color}'>{_ms_row['Difference']:,.2f}</span>",
+                    unsafe_allow_html=True)
+        c4.markdown(str(int(_ms_row["Missing 2B"])))
+        c5.markdown(str(int(_ms_row["Missing Books"])))
+        c6.markdown(str(int(_ms_row["Matched"])))
+        if c7.button("🔍 View", key=f"view_month_{_ms_row['Month']}",
+                     help=f"Filter Invoice Details to {_ms_row['Month']}"):
+            st.session_state["selected_month"] = _ms_row["Month"]
+            st.rerun()
+    st.caption(f"{len(month_summary)} month(s) of data")
 
 # ── FEATURE 4: MONTH DRILL-DOWN FILTER ────────────────────────────────────────
 
@@ -440,7 +450,15 @@ drill_col, gstin_col, sup_col, status_col = st.columns([1.5, 1.5, 1.5, 1.5])
 with drill_col:
     if sorted_months:
         month_options = ["All months"] + sorted_months
-        selected_month = st.selectbox("📅 Filter by Month", month_options)
+        # Sync with session_state set by "View Details" buttons
+        _ss_month = st.session_state.get("selected_month", "All months")
+        _default_idx = month_options.index(_ss_month) if _ss_month in month_options else 0
+        selected_month = st.selectbox(
+            "📅 Filter by Month", month_options, index=_default_idx,
+            key="month_selectbox",
+        )
+        # Keep session_state in sync with manual dropdown changes
+        st.session_state["selected_month"] = selected_month
     else:
         selected_month = "All months"
         st.selectbox("📅 Filter by Month", ["All months"], disabled=True)
@@ -545,6 +563,10 @@ def filter_detail(df):
         }
         allowed = [status_map[s] for s in f_status if s in status_map]
         df = df[df["Remarks"].isin(allowed)]
+    # Invoice number search (applied last, used only in Invoice Details tab)
+    if "Invoice No" in df.columns and st.session_state.get("_f_inv_no","").strip():
+        _inv_q = st.session_state["_f_inv_no"].strip()
+        df = df[df["Invoice No"].astype(str).str.contains(_inv_q, case=False, na=False)]
     return df
 
 # Column configs
@@ -600,6 +622,15 @@ tabs = st.tabs([
 # Tab 0: Invoice Level Details (with Month, Action Required)
 with tabs[0]:
     if not detail_df.empty:
+        # Invoice number search bar — stored in session_state so filter_detail can read it
+        _inv_search = st.text_input(
+            "🔎 Search Invoice Number",
+            value=st.session_state.get("_f_inv_no", ""),
+            placeholder="Type invoice number to search…",
+            key="_inv_no_widget",
+        )
+        st.session_state["_f_inv_no"] = _inv_search
+
         display_df = filter_detail(detail_df.copy())
         safe_dataframe(
             coerce_str_cols(display_df),
