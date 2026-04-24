@@ -249,6 +249,13 @@ def fmt_date(val) -> str:
     except Exception:
         return ""
 
+def _fmt_month_label(m: str) -> str:
+    """Convert '2025-02' → 'February 2025' for display. Falls back to raw string."""
+    try:
+        return pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y")
+    except Exception:
+        return m
+
 def coerce_str_cols(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in df.select_dtypes(include=["object"]).columns:
@@ -301,15 +308,19 @@ if not all_issues.empty:
             ).dt.strftime("%d-%b-%Y").fillna("")
         df_iss = coerce_str_cols(df_iss)
         cols_order = ["Issue"] + [c for c in df_iss.columns if c != "Issue"]
-        safe_dataframe(df_iss[cols_order], column_config={
-            "Issue":         st.column_config.TextColumn("Issue",        width=220),
-            "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
-            "Trade_Name":    st.column_config.TextColumn("Trade Name",   width=280),
-            "Invoice_No":    st.column_config.TextColumn("Invoice No",   width=150),
-            "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
-            "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
-            "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
-        }, empty_message="No issues to display.")
+        # Use st.dataframe directly — issues rows intentionally have blank Invoice_No/GSTIN
+        # (that's the issue being reported), so safe_dataframe's blank-row guard would drop them.
+        if not df_iss[cols_order].empty:
+            st.dataframe(df_iss[cols_order], use_container_width=True, hide_index=True,
+                column_config={
+                    "Issue":         st.column_config.TextColumn("Issue",        width=220),
+                    "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
+                    "Trade_Name":    st.column_config.TextColumn("Trade Name",   width=280),
+                    "Invoice_No":    st.column_config.TextColumn("Invoice No",   width=150),
+                    "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
+                    "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
+                    "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
+                })
         ic = df_iss["Issue"].value_counts().reset_index()
         ic.columns = ["Issue Type", "Count"]
         if not ic.empty:
@@ -411,11 +422,6 @@ month_summary = _build_month_summary(
 if not month_summary.empty:
     st.markdown("## 📅 Month-wise Summary")
 
-    # FEATURE 7: Bar chart
-    chart_data = month_summary.set_index("Month")[["Books ITC", "GSTR ITC"]]
-    if not chart_data.empty:
-        st.bar_chart(chart_data, color=["#166534", "#1D4ED8"], height=220)
-
     # Header row
     h0,h1,h2,h3,h4,h5,h6,h7 = st.columns([1.2,1.4,1.4,1.4,1.0,1.2,1.0,1.0])
     h0.markdown("**Month**");      h1.markdown("**📚 Books ITC**")
@@ -425,7 +431,7 @@ if not month_summary.empty:
     st.divider()
     for _ms_idx, _ms_row in month_summary.iterrows():
         c0,c1,c2,c3,c4,c5,c6,c7 = st.columns([1.2,1.4,1.4,1.4,1.0,1.2,1.0,1.0])
-        c0.markdown(f"`{_ms_row['Month']}`")
+        c0.markdown(f"**{_fmt_month_label(_ms_row['Month'])}**")
         c1.markdown(f"{_ms_row['Books ITC']:,.2f}")
         c2.markdown(f"{_ms_row['GSTR ITC']:,.2f}")
         _diff_color = "#991B1B" if _ms_row["Difference"] < 0 else "#166534"
@@ -435,7 +441,7 @@ if not month_summary.empty:
         c5.markdown(str(int(_ms_row["Missing Books"])))
         c6.markdown(str(int(_ms_row["Matched"])))
         if c7.button("🔍 View", key=f"view_month_{_ms_row['Month']}",
-                     help=f"Filter Invoice Details to {_ms_row['Month']}"):
+                     help=f"Filter Invoice Details to {_fmt_month_label(_ms_row['Month'])}"):
             st.session_state["selected_month"] = _ms_row["Month"]
             st.rerun()
     st.caption(f"{len(month_summary)} month(s) of data")
@@ -449,15 +455,20 @@ drill_col, gstin_col, sup_col, status_col = st.columns([1.5, 1.5, 1.5, 1.5])
 
 with drill_col:
     if sorted_months:
-        month_options = ["All months"] + sorted_months
-        # Sync with session_state set by "View Details" buttons
+        # Build label→raw mapping: "February 2025" → "2025-02"
+        _month_labels   = ["All months"] + [_fmt_month_label(m) for m in sorted_months]
+        _month_raw      = ["All months"] + sorted_months
+        _label_to_raw   = dict(zip(_month_labels, _month_raw))
+        _raw_to_label   = dict(zip(_month_raw, _month_labels))
+        # Sync with session_state (stores raw "2025-02")
         _ss_month = st.session_state.get("selected_month", "All months")
-        _default_idx = month_options.index(_ss_month) if _ss_month in month_options else 0
-        selected_month = st.selectbox(
-            "📅 Filter by Month", month_options, index=_default_idx,
+        _ss_label = _raw_to_label.get(_ss_month, "All months")
+        _default_idx = _month_labels.index(_ss_label) if _ss_label in _month_labels else 0
+        _chosen_label = st.selectbox(
+            "📅 Filter by Month", _month_labels, index=_default_idx,
             key="month_selectbox",
         )
-        # Keep session_state in sync with manual dropdown changes
+        selected_month = _label_to_raw.get(_chosen_label, "All months")
         st.session_state["selected_month"] = selected_month
     else:
         selected_month = "All months"
@@ -818,7 +829,7 @@ def _write_sheet(ws, title, headers, data_rows, col_types, fmts):
     _ = ws.autofit()
 
 BOOK_CT = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date",
-           "Month":"text","Taxable_Value":"number","CGST":"number","SGST":"number",
+           "Month":"text","Month Label":"text","Taxable_Value":"number","CGST":"number","SGST":"number",
            "IGST":"number","CESS":"number","TOTAL_TAX":"number","Invoice_Value":"number",
            "Source_File":"text"}
 MISS_CT  = {"GSTIN":"text","Trade_Name":"text","Invoice_No":"text","Invoice_Date":"date",
@@ -884,16 +895,23 @@ def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol, month_summ
         if not detail_df.empty:
             ddf = detail_df.copy()
             ddf["Invoice Date"] = pd.to_datetime(ddf["Date"], format="%d-%b-%Y", errors="coerce")
-            ddf = ddf.sort_values(["Supplier","Date"]).reset_index(drop=True)
+            # Add human-readable Month Label column for Excel readability
+            ddf["Month Label"] = ddf["Month"].apply(
+                lambda m: pd.to_datetime(str(m)+"-01", format="%Y-%m-%d").strftime("%B %Y")
+                if pd.notna(m) and str(m) not in ("","nan") else ""
+            )
+            ddf = ddf.sort_values(["Month","Supplier","Date"]).reset_index(drop=True)
+
+            # ── Main Supplier Drill Down sheet (all months, with autofilter) ──
             ws_dd = wb.add_worksheet("Supplier Drill Down")
-            _xls_write_header(ws_dd, 0, 0, "Supplier Drill Down — Invoice Level Details", fmts["title"])
+            _xls_write_header(ws_dd, 0, 0, "Supplier Drill Down — Invoice Level Details (use Month filter to drill down)", fmts["title"])
             _ = ws_dd.set_row(1, 20)
-            dd_hdrs = ["Month","GSTIN","Supplier","Invoice No","Invoice Date",
+            dd_hdrs = ["Month Label","GSTIN","Supplier","Invoice No","Invoice Date",
                        "ITC Books","ITC 2B","Difference","Remarks","Action Required"]
             for ci, h in enumerate(dd_hdrs):
                 _xls_write_header(ws_dd, 1, ci, h, fmts["header"])
             for ri, row_data in ddf.iterrows():
-                safe_write_text(ws_dd,   ri+2, 0, row_data.get("Month",""),        fmts["text"])
+                safe_write_text(ws_dd,   ri+2, 0, row_data.get("Month Label",""),  fmts["text"])
                 safe_write_text(ws_dd,   ri+2, 1, row_data["GSTIN"],               fmts["text"])
                 safe_write_text(ws_dd,   ri+2, 2, row_data["Supplier"],            fmts["text"])
                 safe_write_text(ws_dd,   ri+2, 3, row_data["Invoice No"],          fmts["text"])
@@ -904,10 +922,41 @@ def _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol, month_summ
                 safe_write_text(ws_dd,   ri+2, 8, row_data["Remarks"],             fmts["text"])
                 safe_write_text(ws_dd,   ri+2, 9, row_data.get("Action Required",""), fmts["text"])
             _ = ws_dd.autofilter(1, 0, 1, 9)
-            for ci, w in enumerate([10,20,28,18,13,13,13,13,16,20]):
+            for ci, w in enumerate([16,20,28,18,13,13,13,13,16,20]):
                 _ = ws_dd.set_column(ci, ci, w)
             _ = ws_dd.freeze_panes(2, 0)
             _ = ws_dd.autofit()
+
+            # ── Per-month sheets: one sheet per month for direct drill-down ──
+            for _m in ddf["Month"].dropna().unique():
+                _m_df  = ddf[ddf["Month"] == _m].reset_index(drop=True)
+                _label = pd.to_datetime(str(_m)+"-01", format="%Y-%m-%d").strftime("%b-%Y")                          if str(_m) not in ("","nan") else "Unknown"
+                # Sheet name max 31 chars, must be unique
+                _sheet_name = _label[:31]
+                ws_m = wb.add_worksheet(_sheet_name)
+                _xls_write_header(ws_m, 0, 0,
+                    f"Invoice Details — {pd.to_datetime(str(_m)+'-01', format='%Y-%m-%d').strftime('%B %Y') if str(_m) not in ('','nan') else _m}",
+                    fmts["title"])
+                _ = ws_m.set_row(1, 20)
+                m_hdrs = ["GSTIN","Supplier","Invoice No","Invoice Date",
+                          "ITC Books","ITC 2B","Difference","Remarks","Action Required"]
+                for ci, h in enumerate(m_hdrs):
+                    _xls_write_header(ws_m, 1, ci, h, fmts["header"])
+                for ri, row_data in _m_df.iterrows():
+                    safe_write_text(ws_m,   ri+2, 0, row_data["GSTIN"],               fmts["text"])
+                    safe_write_text(ws_m,   ri+2, 1, row_data["Supplier"],            fmts["text"])
+                    safe_write_text(ws_m,   ri+2, 2, row_data["Invoice No"],          fmts["text"])
+                    _xls_write_date(ws_m,   ri+2, 3, row_data["Invoice Date"],        fmts)
+                    safe_write_number(ws_m, ri+2, 4, row_data["ITC Books"],           fmts["number"])
+                    safe_write_number(ws_m, ri+2, 5, row_data["ITC 2B"],             fmts["number"])
+                    safe_write_number(ws_m, ri+2, 6, row_data["Difference"],          fmts["number"])
+                    safe_write_text(ws_m,   ri+2, 7, row_data["Remarks"],             fmts["text"])
+                    safe_write_text(ws_m,   ri+2, 8, row_data.get("Action Required",""), fmts["text"])
+                _ = ws_m.autofilter(1, 0, 1, 8)
+                for ci, w in enumerate([20,28,18,13,13,13,13,16,20]):
+                    _ = ws_m.set_column(ci, ci, w)
+                _ = ws_m.freeze_panes(2, 0)
+                _ = ws_m.autofit()
 
         if not r["no_itc"].empty:
             nidf = post_processing_cleaner(
