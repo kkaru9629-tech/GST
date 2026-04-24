@@ -320,60 +320,15 @@ if "duplicate_issues" in r and not r["duplicate_issues"].empty:
         ignore_index=True
     )
 
+# ── DATA ISSUES — passive banner only, detail lives in the Issues tab ────────
+# No widget here = no re-run triggered = no shake.
+# The dataframe is shown inside st.tabs below (tab switching is CSS-only, zero re-run).
 if not all_issues.empty:
-    # Prepare issues df once — outside the toggle so it never re-computes on open/close
-    _iss_cache_key = ("issues", _cache_key)
-    if st.session_state.get("_iss_df_key") != _iss_cache_key:
-        _df_iss_build = all_issues.copy()
-        if "Invoice_Date" in _df_iss_build.columns:
-            _df_iss_build["Invoice_Date"] = pd.to_datetime(
-                _df_iss_build["Invoice_Date"], errors="coerce"
-            ).dt.strftime("%d-%b-%Y").fillna("")
-        _df_iss_build = coerce_str_cols(_df_iss_build)
-        _cols_order   = ["Issue"] + [c for c in _df_iss_build.columns if c != "Issue"]
-        _df_iss_build = _df_iss_build[_cols_order]
-        _ic_build     = _df_iss_build["Issue"].value_counts().reset_index()
-        _ic_build.columns = ["Issue Type", "Count"]
-        st.session_state["_iss_df"]     = _df_iss_build
-        st.session_state["_iss_ic"]     = _ic_build
-        st.session_state["_iss_df_key"] = _iss_cache_key
-    df_iss   = st.session_state["_iss_df"]
-    _iss_ic  = st.session_state["_iss_ic"]
-
-    # Warning banner + toggle — session_state preserves open/close across re-runs
-    # so the page does not re-trigger the heavy content block unnecessarily
-    _warn_col, _toggle_col = st.columns([7, 1])
-    with _warn_col:
-        st.markdown(f"""
-        <div class="warning-box">
-            <strong>⚠️ {len(all_issues)} Data Issues Found</strong> — Fix these in source data before reconciling.
-        </div>""", unsafe_allow_html=True)
-    with _toggle_col:
-        st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
-        _issues_open = st.toggle(
-            "View Issues",
-            value=st.session_state.get("issues_open", False),
-            key="issues_toggle_widget",
-        )
-        st.session_state["issues_open"] = _issues_open
-
-    # Render in a stable container — content is already prepared above, no recompute
-    if st.session_state.get("issues_open", False):
-        with st.container():
-            _iss_col_cfg = {
-                "Issue":         st.column_config.TextColumn("Issue",        width=220),
-                "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
-                "Trade_Name":    st.column_config.TextColumn("Trade Name",   width=280),
-                "Invoice_No":    st.column_config.TextColumn("Invoice No",   width=150),
-                "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
-                "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
-                "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
-            }
-            if not df_iss.empty:
-                st.dataframe(df_iss, use_container_width=True,
-                             hide_index=True, column_config=_iss_col_cfg)
-            if not _iss_ic.empty:
-                st.dataframe(_iss_ic, use_container_width=True, hide_index=True)
+    st.markdown(f"""
+    <div class="warning-box">
+        <strong>⚠️ {len(all_issues)} Data Issues Found</strong>
+        — See the <strong>⚠️ Data Issues</strong> tab below for details.
+    </div>""", unsafe_allow_html=True)
 
 # ── QUICK INSIGHT CARDS ───────────────────────────────────────────────────────
 
@@ -680,6 +635,7 @@ MISS_CFG = {
 
 # ── TABS ─────────────────────────────────────────────────────────────────────
 
+_issues_tab_label = f"⚠️ Data Issues ({len(all_issues)})" if not all_issues.empty else "⚠️ Data Issues"
 tabs = st.tabs([
     "📋 Invoice Details",
     "📚 Books",
@@ -687,6 +643,7 @@ tabs = st.tabs([
     "❌ Missing in 2B",
     "📕 Missing in Books",
     "📋 Supplier Summary",
+    _issues_tab_label,
 ])
 
 # Tab 0: Invoice Level Details (with Month, Action Required)
@@ -811,6 +768,41 @@ with tabs[5]:
             "ITC Difference":   st.column_config.NumberColumn("📉 Diff",    width=130, format="%.2f"),
         }, empty_message="No supplier data matches the current filters.",
            caption=f"Total Difference: ₹{sup_df['ITC Difference'].sum():,.2f}" if not sup_df.empty else None)
+
+# Tab 6: Data Issues — zero Python re-run when switching to this tab
+with tabs[6]:
+    if all_issues.empty:
+        st.success("✅ No data issues found.")
+    else:
+        _df_iss = all_issues.copy()
+        if "Invoice_Date" in _df_iss.columns:
+            _df_iss["Invoice_Date"] = pd.to_datetime(
+                _df_iss["Invoice_Date"], errors="coerce"
+            ).dt.strftime("%d-%b-%Y").fillna("")
+        _df_iss = coerce_str_cols(_df_iss)
+        _cols_order = ["Issue"] + [c for c in _df_iss.columns if c != "Issue"]
+        _df_iss = _df_iss[_cols_order]
+
+        # Issue count summary (compact)
+        _ic = _df_iss["Issue"].value_counts().reset_index()
+        _ic.columns = ["Issue Type", "Count"]
+        st.caption(f"{len(_df_iss)} issues across {len(_ic)} categories")
+        st.dataframe(_ic, use_container_width=True, hide_index=True,
+                     column_config={
+                         "Issue Type": st.column_config.TextColumn("Issue Type", width=300),
+                         "Count":      st.column_config.NumberColumn("Count",     width=100),
+                     })
+        st.markdown("##### All Issues")
+        st.dataframe(_df_iss, use_container_width=True, hide_index=True,
+                     column_config={
+                         "Issue":         st.column_config.TextColumn("Issue",        width=220),
+                         "GSTIN":         st.column_config.TextColumn("GSTIN",        width=180),
+                         "Trade_Name":    st.column_config.TextColumn("Trade Name",   width=260),
+                         "Invoice_No":    st.column_config.TextColumn("Invoice No",   width=150),
+                         "Invoice_Date":  st.column_config.TextColumn("Invoice Date", width=120),
+                         "Taxable_Value": st.column_config.NumberColumn("Taxable",    width=110, format="%.2f"),
+                         "TOTAL_TAX":     st.column_config.NumberColumn("Total Tax",  width=110, format="%.2f"),
+                     })
 
 # ── ZERO ITC ─────────────────────────────────────────────────────────────────
 
