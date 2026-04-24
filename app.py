@@ -241,6 +241,18 @@ r   = st.session_state["results"]
 s   = r["summary"]
 tol = tolerance
 
+# Stable cache key: hash of ITC totals + file counts. Changes only on new reconciliation.
+_cache_key = (
+    s.get("ITC_Books", 0),
+    s.get("ITC_GSTR", 0),
+    s.get("Matched", 0),
+    s.get("Missing_2B", 0),
+    s.get("Missing_Books", 0),
+    r.get("n_gstr_files", 1),
+    len(r.get("books_raw", pd.DataFrame())),
+    len(r.get("gstr_raw",  pd.DataFrame())),
+)
+
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 def fmt_date(val) -> str:
@@ -412,12 +424,16 @@ def _build_month_summary(books_raw, gstr_raw, missing_2b, missing_books, matched
     df = df.sort_values("_sort").drop(columns=["_sort"]).reset_index(drop=True)
     return df
 
-month_summary = _build_month_summary(
-    r["books_raw"], r["gstr_raw"],
-    r.get("missing_2b", pd.DataFrame()),
-    r.get("missing_books", pd.DataFrame()),
-    r.get("matched", pd.DataFrame()),
-)
+# Cache month_summary — avoid recomputing on every UI interaction (expander, button, etc.)
+if st.session_state.get("_ms_cache_key") != _cache_key:
+    st.session_state["_month_summary"] = _build_month_summary(
+        r["books_raw"], r["gstr_raw"],
+        r.get("missing_2b", pd.DataFrame()),
+        r.get("missing_books", pd.DataFrame()),
+        r.get("matched", pd.DataFrame()),
+    )
+    st.session_state["_ms_cache_key"] = _cache_key
+month_summary = st.session_state["_month_summary"]
 
 if not month_summary.empty:
     st.markdown("## 📅 Month-wise Summary")
@@ -556,7 +572,13 @@ def _build_detail_df(books_raw, gstr_raw, trade_name_map, tol, fmt_date_fn):
 
     return pd.DataFrame(data).sort_values(["Supplier", "Date"]) if data else pd.DataFrame()
 
-detail_df = _build_detail_df(r["books_raw"], r["gstr_raw"], trade_name_map, tol, fmt_date)
+# Cache detail_df — iterating 100s of invoices on every UI interaction causes the shake
+if st.session_state.get("_dd_cache_key") != _cache_key:
+    st.session_state["_detail_df"] = _build_detail_df(
+        r["books_raw"], r["gstr_raw"], trade_name_map, tol, fmt_date
+    )
+    st.session_state["_dd_cache_key"] = _cache_key
+detail_df = st.session_state["_detail_df"]
 
 def filter_detail(df):
     if df.empty: return df
@@ -1030,9 +1052,16 @@ def _build_issues_excel(r, all_issues, trade_name_map):
     return out.read()
 
 
-# Generate Excel files before rendering download buttons
-full_excel_bytes   = _build_full_excel(r, s, detail_df, sup_rows, trade_name_map, tol, month_summary)
-issues_excel_bytes = _build_issues_excel(r, all_issues, trade_name_map)
+# Cache Excel bytes — building xlsxwriter workbooks on every UI interaction
+# is the primary cause of the screen shake when expanding sections.
+if st.session_state.get("_xl_cache_key") != _cache_key:
+    st.session_state["_full_excel"]   = _build_full_excel(
+        r, s, detail_df, sup_rows, trade_name_map, tol, month_summary
+    )
+    st.session_state["_issues_excel"] = _build_issues_excel(r, all_issues, trade_name_map)
+    st.session_state["_xl_cache_key"] = _cache_key
+full_excel_bytes   = st.session_state["_full_excel"]
+issues_excel_bytes = st.session_state["_issues_excel"]
 
 # ── DOWNLOAD BUTTONS ─────────────────────────────────────────────────────────
 st.divider()
