@@ -323,13 +323,14 @@ cards = [
     (c3, "card-orange", "📕 Missing in Books",    s["Missing_Books"]),
     (c4, "card-yellow", "⚠️ Tax Difference",      s["Tax_Diff"]),
 ]
-for col, css, label, value in cards:
-    with col:
+for _col, _css, _label, _value in cards:
+    with _col:
         st.markdown(f"""
-        <div class="insight-card {css}">
-            <div class="card-number">{value}</div>
-            <div class="card-label">{label}</div>
+        <div class="insight-card {_css}">
+            <div class="card-number">{_value}</div>
+            <div class="card-label">{_label}</div>
         </div>""", unsafe_allow_html=True)
+del _col, _css, _label, _value  # prevent magic display of loop variables
 
 # ── FILTER BAR ────────────────────────────────────────────────────────────────
 
@@ -351,47 +352,51 @@ with st.container():
 # ── BUILD INVOICE LEVEL DETAIL ────────────────────────────────────────────────
 
 trade_name_map = r.get("trade_name_mapping", {})
-detail_data    = []
-processed_keys = set()
+def _build_detail_df(books_raw, gstr_raw, trade_name_map, tol, fmt_date_fn):
+    """Build invoice-level detail dataframe. Runs in function scope to prevent
+    iterrows() loop variable leaking into module scope and triggering Streamlit magic display."""
+    data    = []
+    seen    = set()
 
-for _, row in r["books_raw"].iterrows():
-    key = f"{row['GSTIN']}|{row['Invoice_No']}"
-    if key in processed_keys:
-        continue
-    processed_keys.add(key)
-    gstin    = row["GSTIN"]
-    supplier = trade_name_map.get(gstin, row["Trade_Name"])
-    m_row    = None
-    if not r["gstr_raw"].empty:
-        m = r["gstr_raw"][(r["gstr_raw"]["GSTIN"] == gstin) & (r["gstr_raw"]["Invoice_No"] == row["Invoice_No"])]
-        if not m.empty:
-            m_row = m.iloc[0]
+    for _, row in books_raw.iterrows():
+        key = f"{row['GSTIN']}|{row['Invoice_No']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        gstin    = row["GSTIN"]
+        supplier = trade_name_map.get(gstin, row["Trade_Name"])
+        m_row    = None
+        if not gstr_raw.empty:
+            m = gstr_raw[(gstr_raw["GSTIN"] == gstin) & (gstr_raw["Invoice_No"] == row["Invoice_No"])]
+            if not m.empty:
+                m_row = m.iloc[0]
+        if m_row is not None:
+            diff   = float(m_row["TOTAL_TAX"]) - float(row["TOTAL_TAX"])
+            remark = "✅ Matched" if abs(diff) <= tol else "⚠️ Tax Difference"
+            data.append({"GSTIN": gstin, "Supplier": supplier,
+                "Invoice No": row["Invoice_No"], "Date": fmt_date_fn(row["Invoice_Date"]),
+                "ITC Books": float(row["TOTAL_TAX"]), "ITC 2B": float(m_row["TOTAL_TAX"]),
+                "Difference": diff, "Remarks": remark})
+        else:
+            data.append({"GSTIN": gstin, "Supplier": supplier,
+                "Invoice No": row["Invoice_No"], "Date": fmt_date_fn(row["Invoice_Date"]),
+                "ITC Books": float(row["TOTAL_TAX"]), "ITC 2B": 0.0,
+                "Difference": -float(row["TOTAL_TAX"]), "Remarks": "❌ Missing in GST"})
 
-    if m_row is not None:
-        diff   = float(m_row["TOTAL_TAX"]) - float(row["TOTAL_TAX"])
-        remark = "✅ Matched" if abs(diff) <= tol else "⚠️ Tax Difference"
-        detail_data.append({"GSTIN": gstin, "Supplier": supplier,
-            "Invoice No": row["Invoice_No"], "Date": fmt_date(row["Invoice_Date"]),
-            "ITC Books": float(row["TOTAL_TAX"]), "ITC 2B": float(m_row["TOTAL_TAX"]),
-            "Difference": diff, "Remarks": remark})
-    else:
-        detail_data.append({"GSTIN": gstin, "Supplier": supplier,
-            "Invoice No": row["Invoice_No"], "Date": fmt_date(row["Invoice_Date"]),
-            "ITC Books": float(row["TOTAL_TAX"]), "ITC 2B": 0.0,
-            "Difference": -float(row["TOTAL_TAX"]), "Remarks": "❌ Missing in GST"})
+    for _, row in gstr_raw.iterrows():
+        key = f"{row['GSTIN']}|{row['Invoice_No']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        data.append({"GSTIN": row["GSTIN"],
+            "Supplier": trade_name_map.get(row["GSTIN"], row["Trade_Name"]),
+            "Invoice No": row["Invoice_No"], "Date": fmt_date_fn(row["Invoice_Date"]),
+            "ITC Books": 0.0, "ITC 2B": float(row["TOTAL_TAX"]),
+            "Difference": float(row["TOTAL_TAX"]), "Remarks": "📕 Missing in Books"})
 
-for _, row in r["gstr_raw"].iterrows():
-    key = f"{row['GSTIN']}|{row['Invoice_No']}"
-    if key in processed_keys:
-        continue
-    processed_keys.add(key)
-    detail_data.append({"GSTIN": row["GSTIN"],
-        "Supplier": trade_name_map.get(row["GSTIN"], row["Trade_Name"]),
-        "Invoice No": row["Invoice_No"], "Date": fmt_date(row["Invoice_Date"]),
-        "ITC Books": 0.0, "ITC 2B": float(row["TOTAL_TAX"]),
-        "Difference": float(row["TOTAL_TAX"]), "Remarks": "📕 Missing in Books"})
+    return pd.DataFrame(data).sort_values(["Supplier", "Date"]) if data else pd.DataFrame()
 
-detail_df = pd.DataFrame(detail_data).sort_values(["Supplier", "Date"]) if detail_data else pd.DataFrame()
+detail_df = _build_detail_df(r["books_raw"], r["gstr_raw"], trade_name_map, tol, fmt_date)
 
 def filter_detail(df):
     """Apply GSTIN, supplier, and status filters to detail dataframe."""
