@@ -1,6 +1,6 @@
 """
-GST Reconciliation Engine  v7.0 - FINAL FIX
-Ensures invoice matching by GSTIN + digits-only invoice number (as int) + YYYYMMDD date.
+GST Reconciliation Engine  v7.0
+Position-based parsers verified against Karu.xls + Book1.xlsx
 """
 
 import pandas as pd
@@ -54,11 +54,13 @@ def pre_processing_cleaner(df):
     return df
 
 def normalize_invoice_number(inv: str) -> str:
-    if not inv: return ''
-    digits = re.sub(r'\D', '', str(inv).strip())
+    if not inv:
+        return ''
+    s = str(inv).strip().upper()
+    digits = re.sub(r'\D', '', s)
     if digits:
         return str(int(digits))  # remove leading zeros
-    return '0'
+    return re.sub(r'[/\\\-_.\\s|,]', '', s)
 
 def extract_numeric_core(inv:str)->str:
     if not inv: return ''
@@ -367,20 +369,20 @@ def level1_strict_match(g, b):
     logger.info(f'L1:{len(m)} matched')
     return m, g[~g['K'].isin(ks)].copy(), b[~b['K'].isin(ks)].copy(), ks
 
-# ===== FINAL FIX: Level 2 with integer invoice number and YYYYMMDD date =====
+# ===== FIXED: Level 2 with drop_duplicates on NK =====
 def level2_normalized_match(g, b, tol):
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
     g = g.copy()
     b = b.copy()
     
-    # Convert date to YYYYMMDD integer for perfect comparison
-    def date_yyyymmdd(dt):
+    # Helper to get date as YYYY-MM-DD string (or placeholder)
+    def date_str(dt):
         if pd.isna(dt):
-            return 19000101
-        return int(pd.to_datetime(dt).normalize().strftime('%Y%m%d'))
+            return '1900-01-01'
+        return pd.to_datetime(dt).normalize().strftime('%Y-%m-%d')
     
-    # Convert invoice number to integer (removes leading zeros)
+    # Helper to convert invoice number to integer (removes leading zeros)
     def inv_int(inv):
         digits = re.sub(r'\D', '', str(inv).strip())
         if not digits:
@@ -388,24 +390,36 @@ def level2_normalized_match(g, b, tol):
         return int(digits)
     
     g['NK'] = [
-        _key(r['GSTIN'], inv_int(r['Invoice_No']), date_yyyymmdd(r['Invoice_Date']))
+        _key(r['GSTIN'], inv_int(r['Invoice_No']), date_str(r['Invoice_Date']))
         for _, r in g.iterrows()
     ]
     b['NK'] = [
-        _key(r['GSTIN'], inv_int(r['Invoice_No']), date_yyyymmdd(r['Invoice_Date']))
+        _key(r['GSTIN'], inv_int(r['Invoice_No']), date_str(r['Invoice_Date']))
         for _, r in b.iterrows()
     ]
     
     g['NK'] = g['NK'].astype(str)
     b['NK'] = b['NK'].astype(str)
+    
+    # === FIX: Remove duplicate NK keys before merging ===
+    g = g.drop_duplicates(subset=['NK'])
+    b = b.drop_duplicates(subset=['NK'])
+    # ====================================================
+    
     ks = set(g['NK']) & set(b['NK'])
     if not ks:
         return pd.DataFrame(), g.drop(columns=['NK'], errors='ignore'), b.drop(columns=['NK'], errors='ignore'), set()
     
-    m = pd.merge(g[g['NK'].isin(ks)], b[b['NK'].isin(ks)], on='NK', suffixes=('_2B', '_Books')).drop(columns=['NK'], errors='ignore')
+    m = pd.merge(
+        g[g['NK'].isin(ks)],
+        b[b['NK'].isin(ks)],
+        on='NK',
+        suffixes=('_2B', '_Books')
+    ).drop(columns=['NK'], errors='ignore')
+    
     logger.info(f'L2:{len(m)} matched')
     return m, g[~g['NK'].isin(ks)].drop(columns=['NK'], errors='ignore'), b[~b['NK'].isin(ks)].drop(columns=['NK'], errors='ignore'), ks
-# ============================================================================
+# ===================================================================
 
 def level3_numeric_core_match(g, b, tol):
     if g.empty or b.empty: return pd.DataFrame(),g,b,set()
