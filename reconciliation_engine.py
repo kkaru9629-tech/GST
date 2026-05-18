@@ -99,48 +99,63 @@ def _find_tally_hdr(df):
     return 5
 
 def _map_tally_columns(header_row_values: list) -> dict:
-    """Scan header row, return field→col_index mapping. Falls back to verified defaults."""
-    defaults = {
-        'date': 0, 'particulars': 1, 'inv_no': 3, 'gstin': 4,
-        'gross_total': 8,
-        'itc_nr_cgst': 11, 'itc_nr_sgst': 12,
-        'purchases': 13,
-        'input_cgst': 14, 'input_sgst': 15,
-        'input_igst': 18,
-        'tds_prof': 21, 'tds_rent': 23,
-    }
-    found = {}
+    """
+    Returns a dict:
+      - basic fields: date, particulars, inv_no, gstin, gross_total
+      - tds_indices: list of column indices that contain 'tds' (anywhere in header)
+      - tax_indices: dict with keys 'cgst','sgst','igst','cess' -> column index or None
+      - taxable_indices: list of column indices that are numeric and not excluded
+    """
+    basic = {'date': None, 'particulars': None, 'inv_no': None, 'gstin': None, 'gross_total': None}
+    tds_indices = []
+    tax_indices = {'cgst': None, 'sgst': None, 'igst': None, 'cess': None}
+    taxable_indices = []
+
+    excluded_keywords = [
+        'cgst', 'sgst', 'igst', 'cess', 'tds',
+        'gross total', 'round off', 'gst rate'
+    ]
+
     for idx, val in enumerate(header_row_values):
         v = _s(val).lower()
         if not v or v in ('nan', 'none', ''):
             continue
+
+        # Basic fields
         if v == 'date':
-            found['date'] = idx
+            basic['date'] = idx
         elif 'particulars' in v:
-            found['particulars'] = idx
+            basic['particulars'] = idx
         elif 'supplier invoice' in v:
-            found['inv_no'] = idx
+            basic['inv_no'] = idx
         elif 'gstin' in v and 'uin' in v:
-            found['gstin'] = idx
+            basic['gstin'] = idx
         elif v == 'gross total':
-            found['gross_total'] = idx
-        elif 'itc not reflecting' in v and 'cgst' in v:
-            found['itc_nr_cgst'] = idx
-        elif 'itc not reflecting' in v and 'sgst' in v:
-            found['itc_nr_sgst'] = idx
-        elif v == 'purchases':
-            found['purchases'] = idx
-        elif 'input cgst' in v:
-            found['input_cgst'] = idx
-        elif 'input sgst' in v:
-            found['input_sgst'] = idx
-        elif 'input igst' in v:
-            found['input_igst'] = idx
-        elif 'tds on profession' in v or ('tds' in v and '194j' in v):
-            found['tds_prof'] = idx
-        elif 'tds on rent' in v or ('tds' in v and '194i' in v):
-            found['tds_rent'] = idx
-    return {**defaults, **found}
+            basic['gross_total'] = idx
+
+        # TDS columns (any column with 'tds' in header)
+        elif 'tds' in v:
+            tds_indices.append(idx)
+
+        # Tax columns - substring match for cgst, sgst, igst, cess
+        if 'cgst' in v:
+            tax_indices['cgst'] = idx
+        if 'sgst' in v:
+            tax_indices['sgst'] = idx
+        if 'igst' in v:
+            tax_indices['igst'] = idx
+        if 'cess' in v:
+            tax_indices['cess'] = idx
+
+    # Taxable indices: all numeric columns that are not excluded
+    # We'll fill this later with actual numeric data after we know the row types
+    # For now, return the maps; the parser will compute taxable by scanning each row's numeric columns
+    return {
+        **basic,
+        'tds_indices': tds_indices,
+        'tax_indices': tax_indices,
+        'taxable_indices': taxable_indices  # placeholder, to be computed per row
+    }
 
 def parse_tally_purchase_register(raw_df):
     import streamlit as st
@@ -160,16 +175,31 @@ def parse_tally_purchase_register(raw_df):
         'header_values': header_values[:25] if len(header_values) > 25 else header_values,
     }
     for field, idx in cm.items():
-        if 0 <= idx < len(header_values):
-            debug_info['detected_columns'][field] = {
-                'index': idx,
-                'value': header_values[idx]
-            }
+        if field in ('date','particulars','inv_no','gstin','gross_total') and idx is not None:
+            if 0 <= idx < len(header_values):
+                debug_info['detected_columns'][field] = {
+                    'index': idx,
+                    'value': header_values[idx]
+                }
+    # Add tax and TDS detection to debug
+    debug_info['tax_indices'] = {k: v for k,v in cm.get('tax_indices',{}).items() if v is not None}
+    debug_info['tds_indices'] = cm.get('tds_indices', [])
     
     # Save debug info to session state for export
     if 'tally_debug_info' not in st.session_state:
         st.session_state['tally_debug_info'] = []
     st.session_state['tally_debug_info'].append(debug_info)
+
+    # Helper to get basic fields
+    def get_basic(row, field):
+        idx = cm.get(field)
+        if idx is None or idx >= len(row):
+            return '' if field in ('inv_no','gstin','particulars') else 0.0
+        val = row[idx]
+        if field in ('date','particulars','inv_no','gstin'):
+            return _s(val)
+        else:
+            return _f(val)
 
     records = []
     parsed_rows_for_debug = []
@@ -177,101 +207,111 @@ def parse_tally_purchase_register(raw_df):
     for ri in range(hdr_row + 1, len(raw_df)):
         row = raw_df.iloc[ri].tolist()
 
-        def gc(field):
-            idx = cm.get(field, -1)
-            return _f(row[idx]) if 0 <= idx < len(row) else 0.0
-
-        def gs(field):
-            idx = cm.get(field, -1)
-            return _s(row[idx]) if 0 <= idx < len(row) else ''
-
-        name = gs('particulars')
+        name = get_basic(row, 'particulars')
         if not name or name.lower() in ('', 'nan', 'none', 'grand total', 'total'):
             continue
         
-        # Get Gross Total - this is the invoice value before TDS
-        gross = gc('gross_total')
+        gross = get_basic(row, 'gross_total')
         if gross == 0.0:
             continue
 
-        # Get TDS amounts
-        tds_prof = gc('tds_prof')
-        tds_rent = gc('tds_rent')
-        tds = tds_prof + tds_rent
+        # Get TDS amounts by summing all TDS columns
+        tds_total = 0.0
+        for tds_idx in cm.get('tds_indices', []):
+            if tds_idx < len(row):
+                tds_total += _f(row[tds_idx])
         
-        # Calculate Invoice Value = Gross Total + TDS
-        inv_val = gross + tds
+        # Invoice Value = Gross Total + TDS
+        inv_val = gross + tds_total
 
-        # ===== FIXED: Proper tax column detection with numeric validation =====
-        # Try multiple possible column locations for each tax type
+        # ----- Dynamic tax column detection -----
+        # Find all tax columns (CGST, SGST, IGST, CESS) from the map
+        tax_vals = {'cgst': 0.0, 'sgst': 0.0, 'igst': 0.0, 'cess': 0.0}
+        tax_indices = cm.get('tax_indices', {})
+        for tax_type, col_idx in tax_indices.items():
+            if col_idx is not None and col_idx < len(row):
+                val = _f(row[col_idx])
+                # Sanity: tax should not exceed invoice value
+                if 0 <= val <= inv_val + 0.01:
+                    tax_vals[tax_type] = val
+                else:
+                    logger.warning(f"Row {ri}: {tax_type}={val} exceeds invoice value {inv_val}, set to 0")
+                    tax_vals[tax_type] = 0.0
+
+        cgst = tax_vals['cgst']
+        sgst = tax_vals['sgst']
+        igst = tax_vals['igst']
+        cess = tax_vals['cess']
         
-        # CGST: Check input_cgst first, then itc_nr_cgst
-        cgst_candidates = []
-        if cm.get('input_cgst', -1) >= 0:
-            cgst_candidates.append(('input_cgst', gc('input_cgst')))
-        if cm.get('itc_nr_cgst', -1) >= 0:
-            cgst_candidates.append(('itc_nr_cgst', gc('itc_nr_cgst')))
-        
-        # SGST: Check input_sgst first, then itc_nr_sgst
-        sgst_candidates = []
-        if cm.get('input_sgst', -1) >= 0:
-            sgst_candidates.append(('input_sgst', gc('input_sgst')))
-        if cm.get('itc_nr_sgst', -1) >= 0:
-            sgst_candidates.append(('itc_nr_sgst', gc('itc_nr_sgst')))
-        
-        # IGST: Check input_igst
-        igst = gc('input_igst')
-        
-        # Validate and select the correct tax values based on numeric ranges
-        cgst = 0.0
-        sgst = 0.0
-        
-        for source, val in cgst_candidates:
-            if 0 <= val <= inv_val and val > 0:
-                cgst = val
-                break
-            elif val == 0 and cgst == 0:
-                cgst = val
-        
-        for source, val in sgst_candidates:
-            if 0 <= val <= inv_val and val > 0:
-                sgst = val
-                break
-            elif val == 0 and sgst == 0:
-                sgst = val
-        
-        # Validate IGST
-        if igst < 0 or igst > inv_val:
-            igst = 0.0
-        
-        # Intra-state rule: For intra-state supplies, CGST == SGST and IGST == 0
+        # Intra-state rule: if CGST > 0 and SGST == 0 and IGST == 0, assume SGST = CGST
         if cgst > 0 and sgst == 0 and igst == 0:
-            has_cgst_col = cm.get('input_cgst', -1) >= 0 or cm.get('itc_nr_cgst', -1) >= 0
-            has_sgst_col = cm.get('input_sgst', -1) >= 0 or cm.get('itc_nr_sgst', -1) >= 0
-            if has_cgst_col and has_sgst_col:
-                sgst = cgst
+            sgst = cgst
         
-        total_tax = cgst + sgst + igst
-        taxable = max(inv_val - total_tax, 0.0)
+        total_tax = cgst + sgst + igst + cess
+
+        # ----- Dynamic Taxable Value calculation -----
+        # We need to sum all numeric columns that are NOT:
+        #   - any tax column (CGST, SGST, IGST, CESS)
+        #   - TDS columns
+        #   - Gross Total column
+        #   - columns containing 'round off' or 'gst rate'
+        # The remaining numeric columns represent actual expense ledgers.
         
+        # First, collect indices to exclude
+        exclude_indices = set()
+        # Exclude tax columns that were found
+        for tax_idx in tax_indices.values():
+            if tax_idx is not None:
+                exclude_indices.add(tax_idx)
+        # Exclude TDS columns
+        for tds_idx in cm.get('tds_indices', []):
+            exclude_indices.add(tds_idx)
+        # Exclude Gross Total column
+        if cm.get('gross_total') is not None:
+            exclude_indices.add(cm['gross_total'])
+        # Also exclude any column whose header contains 'round off' or 'gst rate'
+        # (we need to re-check header values for these)
+        for idx, hval in enumerate(header_values):
+            h_lower = _s(hval).lower()
+            if 'round off' in h_lower or 'gst rate' in h_lower:
+                exclude_indices.add(idx)
+
+        taxable_sum = 0.0
+        taxable_columns_used = []
+        for col_idx, val in enumerate(row):
+            if col_idx in exclude_indices:
+                continue
+            # Only consider numeric values (positive or negative)
+            num_val = _f(val)
+            if num_val != 0.0:
+                taxable_sum += num_val
+                # Record which column contributed (for debug)
+                if col_idx < len(header_values):
+                    taxable_columns_used.append(header_values[col_idx])
+        
+        # If no taxable columns found, fallback to invoice_value - total_tax (old method)
+        if taxable_sum == 0.0:
+            taxable = max(inv_val - total_tax, 0.0)
+            logger.debug(f"Row {ri}: No taxable expense columns detected, using fallback: {taxable}")
+        else:
+            taxable = taxable_sum
+            # Ensure taxable is not negative
+            taxable = max(taxable, 0.0)
+
         # ===== Sanity Validation =====
         validation_flags = []
-        
-        # Check 1: TOTAL_TAX should not exceed Invoice_Value
         if total_tax > inv_val + 0.01:
             validation_flags.append(f"TAX_EXCEEDS_INVOICE: total_tax={total_tax:.2f} > inv_val={inv_val:.2f}")
-        
-        # Check 2: SGST should not be absurdly high compared to taxable value
-        if taxable > 0 and sgst / taxable > 0.30:
-            validation_flags.append(f"SGST_SUSPICIOUS: sgst={sgst:.2f} is {sgst/taxable*100:.1f}% of taxable={taxable:.2f}")
-        
-        # Check 3: CGST and SGST should be equal for intra-state
+        if taxable > 0 and total_tax > 0:
+            # Rough check: tax rate shouldn't exceed 30% (unlikely)
+            if total_tax / taxable > 0.30:
+                validation_flags.append(f"HIGH_TAX_RATE: tax/taxable={total_tax/taxable:.1%}")
         if cgst > 0 and sgst > 0 and abs(cgst - sgst) > 0.01 and igst == 0:
             validation_flags.append(f"CGST_SGST_MISMATCH: cgst={cgst:.2f}, sgst={sgst:.2f}")
-        
-        gstin = gs('gstin').upper()
-        inv_no = gs('inv_no')
-        d_raw = row[cm.get('date', 0)] if cm.get('date', 0) < len(row) else None
+
+        gstin = get_basic(row, 'gstin').upper()
+        inv_no = get_basic(row, 'inv_no')
+        d_raw = row[cm.get('date', 0)] if cm.get('date', 0) is not None and cm.get('date', 0) < len(row) else None
 
         # Parse date
         try:
@@ -293,7 +333,7 @@ def parse_tally_purchase_register(raw_df):
             'CGST': round(cgst, 2),
             'SGST': round(sgst, 2),
             'IGST': round(igst, 2),
-            'CESS': 0.0,
+            'CESS': round(cess, 2),
             'TOTAL_TAX': round(total_tax, 2),
             'Invoice_Value': round(inv_val, 2),
             '_validation_flags': validation_flags if validation_flags else None,
@@ -305,13 +345,14 @@ def parse_tally_purchase_register(raw_df):
                 'row_index': ri,
                 'name': name,
                 'gross': gross,
-                'tds': tds,
+                'tds': tds_total,
                 'inv_val': inv_val,
                 'cgst': cgst,
                 'sgst': sgst,
                 'igst': igst,
                 'total_tax': total_tax,
                 'taxable': taxable,
+                'taxable_columns': taxable_columns_used[:10],  # limit for brevity
                 'validation_flags': validation_flags,
                 'raw_values': {
                     'date': d_raw,
