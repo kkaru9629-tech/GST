@@ -58,11 +58,9 @@ def normalize_invoice_number(inv: str) -> str:
     if not inv:
         return ''
     s = str(inv).strip().upper()
-    # Extract all digits
     digits = re.sub(r'\D', '', s)
     if digits:
         return digits
-    # Fallback: remove common separators
     return re.sub(r'[/\\\-_.\\s|,]', '', s)
 # =============================================
 
@@ -515,17 +513,54 @@ def level1_strict_match(g, b):
     logger.info(f'L1:{len(m)} matched')
     return m, g[~g['K'].isin(ks)].copy(), b[~b['K'].isin(ks)].copy(), ks
 
+# ===== FIXED: Level 2 matching using digits-only invoice number and date as string =====
 def level2_normalized_match(g, b, tol):
-    if g.empty or b.empty: return pd.DataFrame(),g,b,set()
-    g=g.copy(); b=b.copy()
-    g['NK']=[_key(r['GSTIN'],normalize_invoice_number(_s(r['Invoice_No'])),r['Invoice_Date']) for _,r in g.iterrows()]
-    b['NK']=[_key(r['GSTIN'],normalize_invoice_number(_s(r['Invoice_No'])),r['Invoice_Date']) for _,r in b.iterrows()]
-    g['NK']=g['NK'].astype(str); b['NK']=b['NK'].astype(str)
-    ks=set(g['NK'])&set(b['NK'])
-    if not ks: return pd.DataFrame(),g.drop(columns=['NK'],errors='ignore'),b.drop(columns=['NK'],errors='ignore'),set()
-    m=pd.merge(g[g['NK'].isin(ks)],b[b['NK'].isin(ks)],on='NK',suffixes=('_2B','_Books')).drop(columns=['NK'],errors='ignore')
+    if g.empty or b.empty:
+        return pd.DataFrame(), g, b, set()
+    g = g.copy()
+    b = b.copy()
+    
+    # Helper to get date as YYYY-MM-DD string (or placeholder)
+    def date_str(dt):
+        if pd.isna(dt):
+            return '1900-01-01'
+        # Convert to naive date string
+        return pd.to_datetime(dt).normalize().strftime('%Y-%m-%d')
+    
+    # Create key: GSTIN + digits-only invoice number + date string
+    g['NK'] = [
+        _key(
+            r['GSTIN'],
+            re.sub(r'\D', '', str(r['Invoice_No']).strip()) or '0',
+            date_str(r['Invoice_Date'])
+        )
+        for _, r in g.iterrows()
+    ]
+    b['NK'] = [
+        _key(
+            r['GSTIN'],
+            re.sub(r'\D', '', str(r['Invoice_No']).strip()) or '0',
+            date_str(r['Invoice_Date'])
+        )
+        for _, r in b.iterrows()
+    ]
+    
+    g['NK'] = g['NK'].astype(str)
+    b['NK'] = b['NK'].astype(str)
+    ks = set(g['NK']) & set(b['NK'])
+    if not ks:
+        return pd.DataFrame(), g.drop(columns=['NK'], errors='ignore'), b.drop(columns=['NK'], errors='ignore'), set()
+    
+    m = pd.merge(
+        g[g['NK'].isin(ks)],
+        b[b['NK'].isin(ks)],
+        on='NK',
+        suffixes=('_2B', '_Books')
+    ).drop(columns=['NK'], errors='ignore')
+    
     logger.info(f'L2:{len(m)} matched')
-    return m, g[~g['NK'].isin(ks)].drop(columns=['NK'],errors='ignore'), b[~b['NK'].isin(ks)].drop(columns=['NK'],errors='ignore'), ks
+    return m, g[~g['NK'].isin(ks)].drop(columns=['NK'], errors='ignore'), b[~b['NK'].isin(ks)].drop(columns=['NK'], errors='ignore'), ks
+# =====================================================================================
 
 def level3_numeric_core_match(g, b, tol):
     if g.empty or b.empty: return pd.DataFrame(),g,b,set()
