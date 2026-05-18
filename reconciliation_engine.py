@@ -58,9 +58,11 @@ def normalize_invoice_number(inv: str) -> str:
     if not inv:
         return ''
     s = str(inv).strip().upper()
-    nums = re.findall(r'\d+', s)
-    if nums:
-        return ''.join(nums)
+    # Extract all digits
+    digits = re.sub(r'\D', '', s)
+    if digits:
+        return digits
+    # Fallback: remove common separators
     return re.sub(r'[/\\\-_.\\s|,]', '', s)
 # =============================================
 
@@ -437,7 +439,8 @@ def _validate_books_df(df):
     df_t['GSTIN']        = df_t['GSTIN'].apply(lambda v: '' if (v is None or (isinstance(v,float) and np.isnan(v))) else str(v).strip())
     df_t['Invoice_No']   = df_t['Invoice_No'].apply(lambda v: '' if (v is None or (isinstance(v,float) and np.isnan(v))) else str(v).strip())
     # ===== MODIFIED: normalize dates, fill NaT =====
-    df_t['Invoice_Date'] = pd.to_datetime(df_t['Invoice_Date'], errors='coerce').dt.normalize().fillna(pd.Timestamp('1900-01-01'))
+    df_t['Invoice_Date'] = pd.to_datetime(df_t['Invoice_Date'], errors='coerce').dt.normalize()
+    df_t['Invoice_Date'] = df_t['Invoice_Date'].fillna(pd.Timestamp('1900-01-01'))
     # ================================================
     dup_cols = ['GSTIN','Invoice_No','Invoice_Date','Taxable_Value','CGST','SGST','IGST','CESS']
     fdm = df_t.duplicated(subset=dup_cols, keep=False)
