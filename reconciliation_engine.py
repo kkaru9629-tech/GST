@@ -104,17 +104,10 @@ def _map_tally_columns(header_row_values: list) -> dict:
       - basic fields: date, particulars, inv_no, gstin, gross_total
       - tds_indices: list of column indices that contain 'tds' (anywhere in header)
       - tax_indices: dict with keys 'cgst','sgst','igst','cess' -> column index or None
-      - taxable_indices: list of column indices that are numeric and not excluded
     """
     basic = {'date': None, 'particulars': None, 'inv_no': None, 'gstin': None, 'gross_total': None}
     tds_indices = []
     tax_indices = {'cgst': None, 'sgst': None, 'igst': None, 'cess': None}
-    taxable_indices = []
-
-    excluded_keywords = [
-        'cgst', 'sgst', 'igst', 'cess', 'tds',
-        'gross total', 'round off', 'gst rate'
-    ]
 
     for idx, val in enumerate(header_row_values):
         v = _s(val).lower()
@@ -134,27 +127,24 @@ def _map_tally_columns(header_row_values: list) -> dict:
             basic['gross_total'] = idx
 
         # TDS columns (any column with 'tds' in header)
-        elif 'tds' in v:
+        if 'tds' in v:
             tds_indices.append(idx)
 
         # Tax columns - substring match for cgst, sgst, igst, cess
-        if 'cgst' in v:
+        # Assign only if not already assigned (first occurrence wins)
+        if 'cgst' in v and tax_indices['cgst'] is None:
             tax_indices['cgst'] = idx
-        if 'sgst' in v:
+        if 'sgst' in v and tax_indices['sgst'] is None:
             tax_indices['sgst'] = idx
-        if 'igst' in v:
+        if 'igst' in v and tax_indices['igst'] is None:
             tax_indices['igst'] = idx
-        if 'cess' in v:
+        if 'cess' in v and tax_indices['cess'] is None:
             tax_indices['cess'] = idx
 
-    # Taxable indices: all numeric columns that are not excluded
-    # We'll fill this later with actual numeric data after we know the row types
-    # For now, return the maps; the parser will compute taxable by scanning each row's numeric columns
     return {
         **basic,
         'tds_indices': tds_indices,
         'tax_indices': tax_indices,
-        'taxable_indices': taxable_indices  # placeholder, to be computed per row
     }
 
 def parse_tally_purchase_register(raw_df):
@@ -224,7 +214,7 @@ def parse_tally_purchase_register(raw_df):
         # Invoice Value = Gross Total + TDS
         inv_val = gross + tds_total
 
-        # ----- Dynamic tax column detection -----
+        # ----- Tax column detection -----
         # Find all tax columns (CGST, SGST, IGST, CESS) from the map
         tax_vals = {'cgst': 0.0, 'sgst': 0.0, 'igst': 0.0, 'cess': 0.0}
         tax_indices = cm.get('tax_indices', {})
@@ -249,54 +239,8 @@ def parse_tally_purchase_register(raw_df):
         
         total_tax = cgst + sgst + igst + cess
 
-        # ----- Dynamic Taxable Value calculation -----
-        # We need to sum all numeric columns that are NOT:
-        #   - any tax column (CGST, SGST, IGST, CESS)
-        #   - TDS columns
-        #   - Gross Total column
-        #   - columns containing 'round off' or 'gst rate'
-        # The remaining numeric columns represent actual expense ledgers.
-        
-        # First, collect indices to exclude
-        exclude_indices = set()
-        # Exclude tax columns that were found
-        for tax_idx in tax_indices.values():
-            if tax_idx is not None:
-                exclude_indices.add(tax_idx)
-        # Exclude TDS columns
-        for tds_idx in cm.get('tds_indices', []):
-            exclude_indices.add(tds_idx)
-        # Exclude Gross Total column
-        if cm.get('gross_total') is not None:
-            exclude_indices.add(cm['gross_total'])
-        # Also exclude any column whose header contains 'round off' or 'gst rate'
-        # (we need to re-check header values for these)
-        for idx, hval in enumerate(header_values):
-            h_lower = _s(hval).lower()
-            if 'round off' in h_lower or 'gst rate' in h_lower:
-                exclude_indices.add(idx)
-
-        taxable_sum = 0.0
-        taxable_columns_used = []
-        for col_idx, val in enumerate(row):
-            if col_idx in exclude_indices:
-                continue
-            # Only consider numeric values (positive or negative)
-            num_val = _f(val)
-            if num_val != 0.0:
-                taxable_sum += num_val
-                # Record which column contributed (for debug)
-                if col_idx < len(header_values):
-                    taxable_columns_used.append(header_values[col_idx])
-        
-        # If no taxable columns found, fallback to invoice_value - total_tax (old method)
-        if taxable_sum == 0.0:
-            taxable = max(inv_val - total_tax, 0.0)
-            logger.debug(f"Row {ri}: No taxable expense columns detected, using fallback: {taxable}")
-        else:
-            taxable = taxable_sum
-            # Ensure taxable is not negative
-            taxable = max(taxable, 0.0)
+        # ----- Taxable Value calculation (stable) -----
+        taxable = max(inv_val - total_tax, 0.0)
 
         # ===== Sanity Validation =====
         validation_flags = []
@@ -352,7 +296,6 @@ def parse_tally_purchase_register(raw_df):
                 'igst': igst,
                 'total_tax': total_tax,
                 'taxable': taxable,
-                'taxable_columns': taxable_columns_used[:10],  # limit for brevity
                 'validation_flags': validation_flags,
                 'raw_values': {
                     'date': d_raw,
