@@ -1,6 +1,6 @@
 """
-GST Reconciliation Engine  v7.1
-Fixed: Grouping with normalized invoice numbers
+GST Reconciliation Engine  v7.2
+Fixed: Grouping without date + Duplicate detection with value check
 Position-based parsers verified against Karu.xls + Book1.xlsx
 """
 
@@ -334,7 +334,7 @@ def create_trade_name_mapping(gstr_df, books_df):
                 if g and n: m[g]=n
     return m
 
-# ── group invoices with normalized invoice numbers ────────────────────────────
+# ── group invoices with normalized invoice numbers (FIXED) ────────────────────
 
 def normalize_invoice_for_grouping(inv: str) -> str:
     """
@@ -357,6 +357,9 @@ def group_invoices(df):
     """
     Group invoices using normalized invoice numbers to ensure
     invoices like 'SUN-INV/011' and '011' are grouped together.
+    
+    FIXED: Removed Invoice_Date from grouping keys to prevent
+    same invoice from being split across different dates.
     """
     if df.empty:
         return df
@@ -371,25 +374,28 @@ def group_invoices(df):
     sc = [c for c in ['Taxable_Value', 'CGST', 'SGST', 'IGST', 'CESS', 'TOTAL_TAX', 'Invoice_Value'] 
           if c in df.columns]
     
-    # Group by GSTIN + normalized invoice number + date
-    # Keep Trade_Name (take first non-empty value)
-    grouped = df.groupby(['GSTIN', '_norm_inv_for_grouping', 'Invoice_Date'], as_index=False).agg({
+    # FIXED: Group by GSTIN + normalized invoice number only (removed Invoice_Date)
+    grouped = df.groupby(['GSTIN', '_norm_inv_for_grouping'], as_index=False).agg({
         **{col: 'sum' for col in sc},
         'Trade_Name': lambda x: next((v for v in x if v and str(v).strip()), ''),
-        'Invoice_No': lambda x: next((v for v in x if v and str(v).strip()), '')  # Keep one raw invoice number
+        'Invoice_No': lambda x: next((v for v in x if v and str(v).strip()), ''),  # Keep one raw invoice number
+        'Invoice_Date': lambda x: next((v for v in x if pd.notna(v)), pd.NaT)  # Keep first valid date
     })
     
     grouped = grouped.drop(columns=['_norm_inv_for_grouping'])
     
-    logger.info(f'Grouped {len(df)} → {len(grouped)} (using normalized invoice numbers)')
+    logger.info(f'Grouped {len(df)} → {len(grouped)} (using normalized invoice numbers, without date)')
     return grouped
 
-# ── detect duplicates with normalized invoice numbers ─────────────────────────
+# ── detect duplicates with normalized invoice numbers and value check (FIXED) ──
 
 def detect_duplicate_invoices(df, source):
     """
-    Detect duplicates using normalized invoice numbers to catch cases
-    where same logical invoice appears with different formatting.
+    Detect duplicates using normalized invoice numbers and invoice value
+    to avoid false positives where same normalized number has different amounts.
+    
+    FIXED: Added Invoice_Value to duplicate detection to prevent
+    valid invoices from being incorrectly removed.
     """
     if df.empty:
         return df, pd.DataFrame(), pd.DataFrame()
@@ -401,19 +407,20 @@ def detect_duplicate_invoices(df, source):
     # Create normalized version for duplicate detection
     dt['_norm_dup'] = dt['Invoice_No'].apply(lambda x: normalize_invoice_for_grouping(_s(x)))
     
-    # Check duplicates on GSTIN + normalized invoice number
-    mask = dt.duplicated(subset=['GSTIN', '_norm_dup'], keep=False)
+    # FIXED: Check duplicates on GSTIN + normalized invoice number + Invoice_Value
+    # This prevents removing valid invoices that happen to have same normalized number but different values
+    mask = dt.duplicated(subset=['GSTIN', '_norm_dup', 'Invoice_Value'], keep=False)
     dr = df[mask].copy()
     
     label = 'Duplicate Invoice in Books' if source == 'books' else 'Duplicate Invoice in GSTR-2B'
     di = [{**_row_to_issue(r), 'Issue': label, 'Source': source} for _, r in dr.iterrows()]
     
-    # Deduplicate: keep first occurrence based on normalized invoice number
+    # Deduplicate: keep first occurrence based on normalized invoice number + value
     dedup = df[~mask].copy()
     if not dr.empty:
         dt_dedup = dt[~mask].copy()
-        # Keep first occurrence of each normalized invoice number from duplicates
-        first_dups = dt[mask].drop_duplicates(subset=['GSTIN', '_norm_dup'], keep='first')
+        # Keep first occurrence of each normalized invoice number + value combination from duplicates
+        first_dups = dt[mask].drop_duplicates(subset=['GSTIN', '_norm_dup', 'Invoice_Value'], keep='first')
         first_dups = first_dups.drop(columns=['_norm_dup'])
         # Merge back
         dedup = pd.concat([dt_dedup.drop(columns=['_norm_dup']), first_dups], ignore_index=True)
