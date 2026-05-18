@@ -513,7 +513,7 @@ def level1_strict_match(g, b):
     logger.info(f'L1:{len(m)} matched')
     return m, g[~g['K'].isin(ks)].copy(), b[~b['K'].isin(ks)].copy(), ks
 
-# ===== FIXED: Level 2 matching using digits-only invoice number and date as string =====
+# ===== MODIFIED: Level 2 matching with integer conversion to remove leading zeros =====
 def level2_normalized_match(g, b, tol):
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
@@ -524,14 +524,20 @@ def level2_normalized_match(g, b, tol):
     def date_str(dt):
         if pd.isna(dt):
             return '1900-01-01'
-        # Convert to naive date string
         return pd.to_datetime(dt).normalize().strftime('%Y-%m-%d')
     
-    # Create key: GSTIN + digits-only invoice number + date string
+    # Create key: GSTIN + integer-converted digits-only invoice number + date string
+    # This removes leading zeros: '001' -> 1 -> '1', '01' -> 1 -> '1'
+    def normalize_invoice_to_int(inv):
+        digits = re.sub(r'\D', '', str(inv).strip())
+        if not digits:
+            return '0'
+        return str(int(digits))
+    
     g['NK'] = [
         _key(
             r['GSTIN'],
-            re.sub(r'\D', '', str(r['Invoice_No']).strip()) or '0',
+            normalize_invoice_to_int(r['Invoice_No']),
             date_str(r['Invoice_Date'])
         )
         for _, r in g.iterrows()
@@ -539,7 +545,7 @@ def level2_normalized_match(g, b, tol):
     b['NK'] = [
         _key(
             r['GSTIN'],
-            re.sub(r'\D', '', str(r['Invoice_No']).strip()) or '0',
+            normalize_invoice_to_int(r['Invoice_No']),
             date_str(r['Invoice_Date'])
         )
         for _, r in b.iterrows()
