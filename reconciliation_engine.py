@@ -4,8 +4,6 @@ Position-based parsers verified against Karu.xls + Book1.xlsx
 """
 
 import pandas as pd
-from datetime import datetime
-from pathlib import Path
 import re
 import logging
 from typing import Tuple, Dict, Any, Optional
@@ -92,59 +90,13 @@ def detect_file_format(df, filename=''):
         logger.error(f'detect_file_format: {e}'); return 'unknown'
 
 # ── Tally Purchase Register parser ───────────────────────────────────────────
-# Verified column positions from Karu.xls (header at row-index 5, data from row 6):
-#  0=Date  1=Particulars  3=Supplier Inv No  4=GSTIN/UIN  8=Gross Total
-#  11=ITC NR CGST  12=ITC NR SGST  13=Purchases
-#  14=Input CGST  15=Input SGST  18=Input IGST
-#  21=TDS Prof 194J  23=TDS Rent 194I
-#
-# KEY RULES:
-#  CGST = col14 else col11
-#  SGST = col15 else col12; if still 0 & CGST>0 & IGST=0 → SGST = CGST (intra-state)
-#  IGST = col18
-#  TDS  = col21 + col23
-#  Invoice_Value = Gross Total + TDS
-#  Taxable_Value = Invoice_Value - CGST - SGST - IGST
-
-def _normalize_header_label(val: str) -> str:
-    if val is None:
-        return ''
-    text = str(val).lower().strip()
-    text = re.sub(r'[\s\.\-/\\_]+', ' ', text)
-    text = re.sub(r'[^a-z0-9 ]+', '', text)
-    return text
-
 
 def _find_tally_hdr(df):
-    best_idx = 5
-    best_score = -1
-    for i in range(min(20, len(df))):
-        vals = [_normalize_header_label(v) for v in df.iloc[i].tolist()]
-        score = 0
-        if any('particulars' in v for v in vals):
-            score += 3
-        if any('supplier invoice' in v or 'supplier inv' in v or 'invoice no' in v or 'inv no' in v for v in vals):
-            score += 3
-        if any('gstin' in v for v in vals):
-            score += 2
-        if any('gross total' in v or ('gross' in v and 'total' in v) or 'gross amount' in v for v in vals):
-            score += 2
-        if any('input cgst' in v or 'itc nr cgst' in v or ('cgst' in v and 'input' in v) for v in vals):
-            score += 1
-        if any('input sgst' in v or 'itc nr sgst' in v or ('sgst' in v and 'input' in v) for v in vals):
-            score += 1
-        if any('input igst' in v or ('igst' in v and 'input' in v) for v in vals):
-            score += 1
-        if any('tds' in v and ('194j' in v or 'profession' in v or 'prof' in v) for v in vals):
-            score += 1
-        if any('tds' in v and ('194i' in v or 'rent' in v) for v in vals):
-            score += 1
-        if score > best_score:
-            best_score = score
-            best_idx = i
-    logger.info(f'Best header row score: {best_score}')
-    return best_idx
-
+    for i in range(min(12, len(df))):
+        vals = [_s(v).lower() for v in df.iloc[i].tolist()]
+        if any('particulars' in v for v in vals) and any('supplier invoice' in v for v in vals):
+            return i
+    return 5
 
 def _map_tally_columns(header_row_values: list) -> dict:
     """Scan header row, return field→col_index mapping. Falls back to verified defaults."""
@@ -159,50 +111,40 @@ def _map_tally_columns(header_row_values: list) -> dict:
     }
     found = {}
     for idx, val in enumerate(header_row_values):
-        value = _normalize_header_label(val)
-        if not value:
+        v = _s(val).lower()
+        if not v or v in ('nan', 'none', ''):
             continue
-        if 'date' in value and ('invoice' in value or 'bill' in value or value == 'date'):
-            found.setdefault('date', idx)
-        elif 'particulars' in value or 'narration' in value or 'supplier name' in value or 'party name' in value:
-            found.setdefault('particulars', idx)
-        elif 'supplier invoice' in value or 'supplier inv' in value or 'invoice no' in value or 'inv no' in value or 'invoice number' in value:
-            found.setdefault('inv_no', idx)
-        elif 'gstin' in value or 'uin' in value:
-            found.setdefault('gstin', idx)
-        elif 'gross total' in value or ('gross' in value and 'total' in value) or 'gross amount' in value or 'total amount' in value:
-            found.setdefault('gross_total', idx)
-        elif 'input cgst' in value or 'itc nr cgst' in value or ('cgst' in value and 'input' in value) or ('cgst' in value and 'eligible' in value):
-            found.setdefault('input_cgst', idx)
-        elif 'input sgst' in value or 'itc nr sgst' in value or ('sgst' in value and 'input' in value) or ('sgst' in value and 'eligible' in value):
-            found.setdefault('input_sgst', idx)
-        elif 'input igst' in value or 'itc nr igst' in value or ('igst' in value and 'input' in value) or ('igst' in value and 'eligible' in value):
-            found.setdefault('input_igst', idx)
-        elif 'tds on profession' in value or 'tds 194j' in value or 'tds prof' in value or ('tds' in value and 'profession' in value):
-            found.setdefault('tds_prof', idx)
-        elif 'tds on rent' in value or 'tds 194i' in value or 'tds rent' in value or ('tds' in value and 'rent' in value):
-            found.setdefault('tds_rent', idx)
-        elif 'purchases' in value:
-            found.setdefault('purchases', idx)
-        elif 'total taxable value' in value or 'taxable value' in value:
-            found.setdefault('taxable_value', idx)
+        if v == 'date':
+            found['date'] = idx
+        elif 'particulars' in v:
+            found['particulars'] = idx
+        elif 'supplier invoice' in v:
+            found['inv_no'] = idx
+        elif 'gstin' in v and 'uin' in v:
+            found['gstin'] = idx
+        elif v == 'gross total':
+            found['gross_total'] = idx
+        elif 'itc not reflecting' in v and 'cgst' in v:
+            found['itc_nr_cgst'] = idx
+        elif 'itc not reflecting' in v and 'sgst' in v:
+            found['itc_nr_sgst'] = idx
+        elif v == 'purchases':
+            found['purchases'] = idx
+        elif 'input cgst' in v:
+            found['input_cgst'] = idx
+        elif 'input sgst' in v:
+            found['input_sgst'] = idx
+        elif 'input igst' in v:
+            found['input_igst'] = idx
+        elif 'tds on profession' in v or ('tds' in v and '194j' in v):
+            found['tds_prof'] = idx
+        elif 'tds on rent' in v or ('tds' in v and '194i' in v):
+            found['tds_rent'] = idx
     return {**defaults, **found}
 
-
-def _export_tally_parser_debug(header_row, mapping, parsed_rows, suspicious_rows):
-    debug_dir = Path('logs')
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    filename = debug_dir / f'tally_pr_debug_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-    with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
-        pd.DataFrame({'Header Cell': [_s(v) for v in header_row]}).to_excel(writer, sheet_name='Header Row', index=False)
-        pd.DataFrame([{'Field': k, 'Column Index': v} for k, v in mapping.items()]).to_excel(writer, sheet_name='Detected Columns', index=False)
-        if parsed_rows:
-            pd.DataFrame(parsed_rows).to_excel(writer, sheet_name='Parsed Rows', index=False)
-        if suspicious_rows:
-            pd.DataFrame(suspicious_rows).to_excel(writer, sheet_name='Suspicious Rows', index=False)
-    logger.info(f'Tally PR debug export written to {filename}')
-
 def parse_tally_purchase_register(raw_df):
+    import streamlit as st
+    
     logger.info('Parsing Tally Purchase Register...')
     hdr_row = _find_tally_hdr(raw_df)
     logger.info(f'Header at row {hdr_row}')
@@ -211,9 +153,27 @@ def parse_tally_purchase_register(raw_df):
     cm = _map_tally_columns(header_values)
     logger.info(f'Tally column map: {cm}')
 
-    parsed_rows = []
-    suspicious_rows = []
+    # ===== DEBUG EXPORT: Detected column names and indexes =====
+    debug_info = {
+        'detected_columns': {},
+        'header_row_index': hdr_row,
+        'header_values': header_values[:25] if len(header_values) > 25 else header_values,
+    }
+    for field, idx in cm.items():
+        if 0 <= idx < len(header_values):
+            debug_info['detected_columns'][field] = {
+                'index': idx,
+                'value': header_values[idx]
+            }
+    
+    # Save debug info to session state for export
+    if 'tally_debug_info' not in st.session_state:
+        st.session_state['tally_debug_info'] = []
+    st.session_state['tally_debug_info'].append(debug_info)
+
     records = []
+    parsed_rows_for_debug = []
+    
     for ri in range(hdr_row + 1, len(raw_df)):
         row = raw_df.iloc[ri].tolist()
 
@@ -228,29 +188,90 @@ def parse_tally_purchase_register(raw_df):
         name = gs('particulars')
         if not name or name.lower() in ('', 'nan', 'none', 'grand total', 'total'):
             continue
+        
+        # Get Gross Total - this is the invoice value before TDS
         gross = gc('gross_total')
         if gross == 0.0:
             continue
 
-        cgst      = gc('input_cgst') or gc('itc_nr_cgst')
-        sgst_main = gc('input_sgst')
-        sgst_nr   = gc('itc_nr_sgst')
-        sgst      = sgst_main if sgst_main != 0.0 else sgst_nr
-        igst      = gc('input_igst')
+        # Get TDS amounts
+        tds_prof = gc('tds_prof')
+        tds_rent = gc('tds_rent')
+        tds = tds_prof + tds_rent
+        
+        # Calculate Invoice Value = Gross Total + TDS
+        inv_val = gross + tds
 
-        # Intra-state rule: infer SGST = CGST ONLY when BOTH SGST source columns
-        # were genuinely empty (not zero-entered) and IGST is also absent.
-        if cgst > 0.0 and igst == 0.0 and sgst_main == 0.0 and sgst_nr == 0.0:
-            sgst = cgst
-
-        tds       = gc('tds_prof') + gc('tds_rent')
-        inv_val   = gross + tds
+        # ===== FIXED: Proper tax column detection with numeric validation =====
+        # Try multiple possible column locations for each tax type
+        
+        # CGST: Check input_cgst first, then itc_nr_cgst
+        cgst_candidates = []
+        if cm.get('input_cgst', -1) >= 0:
+            cgst_candidates.append(('input_cgst', gc('input_cgst')))
+        if cm.get('itc_nr_cgst', -1) >= 0:
+            cgst_candidates.append(('itc_nr_cgst', gc('itc_nr_cgst')))
+        
+        # SGST: Check input_sgst first, then itc_nr_sgst
+        sgst_candidates = []
+        if cm.get('input_sgst', -1) >= 0:
+            sgst_candidates.append(('input_sgst', gc('input_sgst')))
+        if cm.get('itc_nr_sgst', -1) >= 0:
+            sgst_candidates.append(('itc_nr_sgst', gc('itc_nr_sgst')))
+        
+        # IGST: Check input_igst
+        igst = gc('input_igst')
+        
+        # Validate and select the correct tax values based on numeric ranges
+        cgst = 0.0
+        sgst = 0.0
+        
+        for source, val in cgst_candidates:
+            if 0 <= val <= inv_val and val > 0:
+                cgst = val
+                break
+            elif val == 0 and cgst == 0:
+                cgst = val
+        
+        for source, val in sgst_candidates:
+            if 0 <= val <= inv_val and val > 0:
+                sgst = val
+                break
+            elif val == 0 and sgst == 0:
+                sgst = val
+        
+        # Validate IGST
+        if igst < 0 or igst > inv_val:
+            igst = 0.0
+        
+        # Intra-state rule: For intra-state supplies, CGST == SGST and IGST == 0
+        if cgst > 0 and sgst == 0 and igst == 0:
+            has_cgst_col = cm.get('input_cgst', -1) >= 0 or cm.get('itc_nr_cgst', -1) >= 0
+            has_sgst_col = cm.get('input_sgst', -1) >= 0 or cm.get('itc_nr_sgst', -1) >= 0
+            if has_cgst_col and has_sgst_col:
+                sgst = cgst
+        
         total_tax = cgst + sgst + igst
-        taxable   = max(inv_val - total_tax, 0.0)
-
-        gstin  = gs('gstin').upper()
+        taxable = max(inv_val - total_tax, 0.0)
+        
+        # ===== Sanity Validation =====
+        validation_flags = []
+        
+        # Check 1: TOTAL_TAX should not exceed Invoice_Value
+        if total_tax > inv_val + 0.01:
+            validation_flags.append(f"TAX_EXCEEDS_INVOICE: total_tax={total_tax:.2f} > inv_val={inv_val:.2f}")
+        
+        # Check 2: SGST should not be absurdly high compared to taxable value
+        if taxable > 0 and sgst / taxable > 0.30:
+            validation_flags.append(f"SGST_SUSPICIOUS: sgst={sgst:.2f} is {sgst/taxable*100:.1f}% of taxable={taxable:.2f}")
+        
+        # Check 3: CGST and SGST should be equal for intra-state
+        if cgst > 0 and sgst > 0 and abs(cgst - sgst) > 0.01 and igst == 0:
+            validation_flags.append(f"CGST_SGST_MISMATCH: cgst={cgst:.2f}, sgst={sgst:.2f}")
+        
+        gstin = gs('gstin').upper()
         inv_no = gs('inv_no')
-        d_raw  = row[cm.get('date', 0)] if cm.get('date', 0) < len(row) else None
+        d_raw = row[cm.get('date', 0)] if cm.get('date', 0) < len(row) else None
 
         # Parse date
         try:
@@ -263,56 +284,73 @@ def parse_tally_purchase_register(raw_df):
         except Exception:
             inv_date = pd.NaT
 
-        parsed = {
-            'GSTIN':         gstin,
-            'Trade_Name':    name,
-            'Invoice_No':    inv_no,
-            'Invoice_Date':  inv_date,
-            'Gross_Total':   round(gross, 2),
-            'CGST':          round(cgst, 2),
-            'SGST':          round(sgst, 2),
-            'IGST':          round(igst, 2),
-            'CESS':          0.0,
-            'TOTAL_TAX':     round(total_tax, 2),
-            'Invoice_Value': round(inv_val, 2),
+        record = {
+            'GSTIN': gstin,
+            'Trade_Name': name,
+            'Invoice_No': inv_no,
+            'Invoice_Date': inv_date,
             'Taxable_Value': round(taxable, 2),
+            'CGST': round(cgst, 2),
+            'SGST': round(sgst, 2),
+            'IGST': round(igst, 2),
+            'CESS': 0.0,
+            'TOTAL_TAX': round(total_tax, 2),
+            'Invoice_Value': round(inv_val, 2),
+            '_validation_flags': validation_flags if validation_flags else None,
         }
-
-        issues = []
-        if total_tax > inv_val + 0.01:
-            issues.append('TOTAL_TAX exceeds Invoice_Value')
-        if taxable > 0 and sgst > taxable * 0.30:
-            issues.append('SGST unusually high vs Taxable_Value')
-        if issues:
-            suspicious_rows.append({**parsed, 'Issue': '; '.join(issues)})
-
-        if len(parsed_rows) < 10:
-            parsed_rows.append(parsed.copy())
-
-        records.append(parsed)
+        
+        # Store for debug export (first 10 parsed rows)
+        if len(parsed_rows_for_debug) < 10:
+            parsed_rows_for_debug.append({
+                'row_index': ri,
+                'name': name,
+                'gross': gross,
+                'tds': tds,
+                'inv_val': inv_val,
+                'cgst': cgst,
+                'sgst': sgst,
+                'igst': igst,
+                'total_tax': total_tax,
+                'taxable': taxable,
+                'validation_flags': validation_flags,
+                'raw_values': {
+                    'date': d_raw,
+                    'gstin': gstin,
+                    'inv_no': inv_no,
+                }
+            })
+        
+        records.append(record)
+    
+    # Add debug parsed rows to session state
+    st.session_state['tally_debug_parsed_rows'] = parsed_rows_for_debug
 
     if not records:
         raise ValueError(
             'Tally Purchase Register: no data rows found. '
             'Ensure the file contains Purchase Register data with a Gross Total column.'
         )
-
-    _export_tally_parser_debug(header_values, cm, parsed_rows, suspicious_rows)
-
+    
+    # ===== Separate suspicious rows =====
     df = pd.DataFrame(records)
-    logger.info(f'Tally PR: {len(df)} rows extracted')
-    valid_df, no_itc, issues_df = _validate_books_df(df)
-    if suspicious_rows:
-        sr_df = pd.DataFrame(suspicious_rows)
-        sr_df['Source'] = 'tally_parser_suspicious'
-        issues_df = pd.concat([issues_df, sr_df], ignore_index=True) if not issues_df.empty else sr_df
-        logger.warning('Detected %d suspicious Tally PR row(s)', len(suspicious_rows))
-    return valid_df, no_itc, issues_df
+    
+    # Flag suspicious rows
+    df['_is_suspicious'] = df['_validation_flags'].notna() & (df['_validation_flags'].astype(str) != 'None')
+    
+    # Create suspicious rows dataframe for separate export
+    suspicious_rows = df[df['_is_suspicious']].copy() if df['_is_suspicious'].any() else pd.DataFrame()
+    
+    # Remove validation flags from main dataframe before returning
+    df_clean = df.drop(columns=['_validation_flags', '_is_suspicious'], errors='ignore')
+    
+    logger.info(f'Tally PR: {len(df_clean)} rows extracted, {len(suspicious_rows)} suspicious rows flagged')
+    
+    # Store suspicious rows in session state for debug
+    st.session_state['tally_suspicious_rows'] = suspicious_rows
+    
+    return _validate_books_df(df_clean)
 
 # ── GSTR-2B Excel parser ──────────────────────────────────────────────────────
-# Verified column positions from Book1.xlsx (data starts row 6):
-#  0=GSTIN  1=Trade Name  2=Invoice No  4=Invoice Date  5=Invoice Value
-#  8=Taxable  9=IGST  10=CGST  11=SGST  12=CESS
 
 def _find_gstr2b_start(df):
     """Find first row containing a valid GSTIN in col 0 or col 1."""
