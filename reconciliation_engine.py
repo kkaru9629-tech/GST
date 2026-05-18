@@ -103,11 +103,11 @@ def _map_tally_columns(header_row_values: list) -> dict:
     Returns a dict:
       - basic fields: date, particulars, inv_no, gstin, gross_total
       - tds_indices: list of column indices that contain 'tds' (anywhere in header)
-      - tax_indices: dict with keys 'cgst','sgst','igst','cess' -> column index or None
+      - tax_indices: dict with keys 'cgst','sgst','igst','cess' -> list of column indices
     """
     basic = {'date': None, 'particulars': None, 'inv_no': None, 'gstin': None, 'gross_total': None}
     tds_indices = []
-    tax_indices = {'cgst': None, 'sgst': None, 'igst': None, 'cess': None}
+    tax_indices = {'cgst': [], 'sgst': [], 'igst': [], 'cess': []}
 
     for idx, val in enumerate(header_row_values):
         v = _s(val).lower()
@@ -131,15 +131,15 @@ def _map_tally_columns(header_row_values: list) -> dict:
             tds_indices.append(idx)
 
         # Tax columns - substring match for cgst, sgst, igst, cess
-        # Assign only if not already assigned (first occurrence wins)
-        if 'cgst' in v and tax_indices['cgst'] is None:
-            tax_indices['cgst'] = idx
-        if 'sgst' in v and tax_indices['sgst'] is None:
-            tax_indices['sgst'] = idx
-        if 'igst' in v and tax_indices['igst'] is None:
-            tax_indices['igst'] = idx
-        if 'cess' in v and tax_indices['cess'] is None:
-            tax_indices['cess'] = idx
+        # Append ALL matching columns (lists)
+        if 'cgst' in v:
+            tax_indices['cgst'].append(idx)
+        if 'sgst' in v:
+            tax_indices['sgst'].append(idx)
+        if 'igst' in v:
+            tax_indices['igst'].append(idx)
+        if 'cess' in v:
+            tax_indices['cess'].append(idx)
 
     return {
         **basic,
@@ -172,7 +172,7 @@ def parse_tally_purchase_register(raw_df):
                     'value': header_values[idx]
                 }
     # Add tax and TDS detection to debug
-    debug_info['tax_indices'] = {k: v for k,v in cm.get('tax_indices',{}).items() if v is not None}
+    debug_info['tax_indices'] = cm.get('tax_indices', {})
     debug_info['tds_indices'] = cm.get('tds_indices', [])
     
     # Save debug info to session state for export
@@ -214,24 +214,48 @@ def parse_tally_purchase_register(raw_df):
         # Invoice Value = Gross Total + TDS
         inv_val = gross + tds_total
 
-        # ----- Tax column detection -----
-        # Find all tax columns (CGST, SGST, IGST, CESS) from the map
-        tax_vals = {'cgst': 0.0, 'sgst': 0.0, 'igst': 0.0, 'cess': 0.0}
+        # ----- Tax column detection (multiple columns per tax type) -----
         tax_indices = cm.get('tax_indices', {})
-        for tax_type, col_idx in tax_indices.items():
-            if col_idx is not None and col_idx < len(row):
-                val = _f(row[col_idx])
-                # Sanity: tax should not exceed invoice value
+        
+        # Sum all CGST columns
+        cgst = 0.0
+        for idx in tax_indices.get('cgst', []):
+            if idx < len(row):
+                val = _f(row[idx])
                 if 0 <= val <= inv_val + 0.01:
-                    tax_vals[tax_type] = val
+                    cgst += val
                 else:
-                    logger.warning(f"Row {ri}: {tax_type}={val} exceeds invoice value {inv_val}, set to 0")
-                    tax_vals[tax_type] = 0.0
-
-        cgst = tax_vals['cgst']
-        sgst = tax_vals['sgst']
-        igst = tax_vals['igst']
-        cess = tax_vals['cess']
+                    logger.warning(f"Row {ri}: CGST column {idx} value {val} exceeds invoice value {inv_val}, skipped")
+        
+        # Sum all SGST columns
+        sgst = 0.0
+        for idx in tax_indices.get('sgst', []):
+            if idx < len(row):
+                val = _f(row[idx])
+                if 0 <= val <= inv_val + 0.01:
+                    sgst += val
+                else:
+                    logger.warning(f"Row {ri}: SGST column {idx} value {val} exceeds invoice value {inv_val}, skipped")
+        
+        # Sum all IGST columns
+        igst = 0.0
+        for idx in tax_indices.get('igst', []):
+            if idx < len(row):
+                val = _f(row[idx])
+                if 0 <= val <= inv_val + 0.01:
+                    igst += val
+                else:
+                    logger.warning(f"Row {ri}: IGST column {idx} value {val} exceeds invoice value {inv_val}, skipped")
+        
+        # Sum all CESS columns
+        cess = 0.0
+        for idx in tax_indices.get('cess', []):
+            if idx < len(row):
+                val = _f(row[idx])
+                if 0 <= val <= inv_val + 0.01:
+                    cess += val
+                else:
+                    logger.warning(f"Row {ri}: CESS column {idx} value {val} exceeds invoice value {inv_val}, skipped")
         
         # Intra-state rule: if CGST > 0 and SGST == 0 and IGST == 0, assume SGST = CGST
         if cgst > 0 and sgst == 0 and igst == 0:
