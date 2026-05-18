@@ -4,6 +4,8 @@ Position-based parsers verified against Karu.xls + Book1.xlsx
 """
 
 import pandas as pd
+from datetime import datetime
+from pathlib import Path
 import re
 import logging
 from typing import Tuple, Dict, Any, Optional
@@ -104,12 +106,45 @@ def detect_file_format(df, filename=''):
 #  Invoice_Value = Gross Total + TDS
 #  Taxable_Value = Invoice_Value - CGST - SGST - IGST
 
+def _normalize_header_label(val: str) -> str:
+    if val is None:
+        return ''
+    text = str(val).lower().strip()
+    text = re.sub(r'[\s\.\-/\\_]+', ' ', text)
+    text = re.sub(r'[^a-z0-9 ]+', '', text)
+    return text
+
+
 def _find_tally_hdr(df):
-    for i in range(min(12, len(df))):
-        vals = [_s(v).lower() for v in df.iloc[i].tolist()]
-        if any('particulars' in v for v in vals) and any('supplier invoice' in v for v in vals):
-            return i
-    return 5
+    best_idx = 5
+    best_score = -1
+    for i in range(min(20, len(df))):
+        vals = [_normalize_header_label(v) for v in df.iloc[i].tolist()]
+        score = 0
+        if any('particulars' in v for v in vals):
+            score += 3
+        if any('supplier invoice' in v or 'supplier inv' in v or 'invoice no' in v or 'inv no' in v for v in vals):
+            score += 3
+        if any('gstin' in v for v in vals):
+            score += 2
+        if any('gross total' in v or ('gross' in v and 'total' in v) or 'gross amount' in v for v in vals):
+            score += 2
+        if any('input cgst' in v or 'itc nr cgst' in v or ('cgst' in v and 'input' in v) for v in vals):
+            score += 1
+        if any('input sgst' in v or 'itc nr sgst' in v or ('sgst' in v and 'input' in v) for v in vals):
+            score += 1
+        if any('input igst' in v or ('igst' in v and 'input' in v) for v in vals):
+            score += 1
+        if any('tds' in v and ('194j' in v or 'profession' in v or 'prof' in v) for v in vals):
+            score += 1
+        if any('tds' in v and ('194i' in v or 'rent' in v) for v in vals):
+            score += 1
+        if score > best_score:
+            best_score = score
+            best_idx = i
+    logger.info(f'Best header row score: {best_score}')
+    return best_idx
+
 
 def _map_tally_columns(header_row_values: list) -> dict:
     """Scan header row, return field→col_index mapping. Falls back to verified defaults."""
@@ -124,45 +159,60 @@ def _map_tally_columns(header_row_values: list) -> dict:
     }
     found = {}
     for idx, val in enumerate(header_row_values):
-        v = _s(val).lower()
-        if not v or v in ('nan', 'none', ''):
+        value = _normalize_header_label(val)
+        if not value:
             continue
-        if v == 'date':
-            found['date'] = idx
-        elif 'particulars' in v:
-            found['particulars'] = idx
-        elif 'supplier invoice' in v:
-            found['inv_no'] = idx
-        elif 'gstin' in v and 'uin' in v:
-            found['gstin'] = idx
-        elif v == 'gross total':
-            found['gross_total'] = idx
-        elif 'itc not reflecting' in v and 'cgst' in v:
-            found['itc_nr_cgst'] = idx
-        elif 'itc not reflecting' in v and 'sgst' in v:
-            found['itc_nr_sgst'] = idx
-        elif v == 'purchases':
-            found['purchases'] = idx
-        elif 'input cgst' in v:
-            found['input_cgst'] = idx
-        elif 'input sgst' in v:
-            found['input_sgst'] = idx
-        elif 'input igst' in v:
-            found['input_igst'] = idx
-        elif 'tds on profession' in v or ('tds' in v and '194j' in v):
-            found['tds_prof'] = idx
-        elif 'tds on rent' in v or ('tds' in v and '194i' in v):
-            found['tds_rent'] = idx
+        if 'date' in value and ('invoice' in value or 'bill' in value or value == 'date'):
+            found.setdefault('date', idx)
+        elif 'particulars' in value or 'narration' in value or 'supplier name' in value or 'party name' in value:
+            found.setdefault('particulars', idx)
+        elif 'supplier invoice' in value or 'supplier inv' in value or 'invoice no' in value or 'inv no' in value or 'invoice number' in value:
+            found.setdefault('inv_no', idx)
+        elif 'gstin' in value or 'uin' in value:
+            found.setdefault('gstin', idx)
+        elif 'gross total' in value or ('gross' in value and 'total' in value) or 'gross amount' in value or 'total amount' in value:
+            found.setdefault('gross_total', idx)
+        elif 'input cgst' in value or 'itc nr cgst' in value or ('cgst' in value and 'input' in value) or ('cgst' in value and 'eligible' in value):
+            found.setdefault('input_cgst', idx)
+        elif 'input sgst' in value or 'itc nr sgst' in value or ('sgst' in value and 'input' in value) or ('sgst' in value and 'eligible' in value):
+            found.setdefault('input_sgst', idx)
+        elif 'input igst' in value or 'itc nr igst' in value or ('igst' in value and 'input' in value) or ('igst' in value and 'eligible' in value):
+            found.setdefault('input_igst', idx)
+        elif 'tds on profession' in value or 'tds 194j' in value or 'tds prof' in value or ('tds' in value and 'profession' in value):
+            found.setdefault('tds_prof', idx)
+        elif 'tds on rent' in value or 'tds 194i' in value or 'tds rent' in value or ('tds' in value and 'rent' in value):
+            found.setdefault('tds_rent', idx)
+        elif 'purchases' in value:
+            found.setdefault('purchases', idx)
+        elif 'total taxable value' in value or 'taxable value' in value:
+            found.setdefault('taxable_value', idx)
     return {**defaults, **found}
+
+
+def _export_tally_parser_debug(header_row, mapping, parsed_rows, suspicious_rows):
+    debug_dir = Path('logs')
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    filename = debug_dir / f'tally_pr_debug_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+    with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
+        pd.DataFrame({'Header Cell': [_s(v) for v in header_row]}).to_excel(writer, sheet_name='Header Row', index=False)
+        pd.DataFrame([{'Field': k, 'Column Index': v} for k, v in mapping.items()]).to_excel(writer, sheet_name='Detected Columns', index=False)
+        if parsed_rows:
+            pd.DataFrame(parsed_rows).to_excel(writer, sheet_name='Parsed Rows', index=False)
+        if suspicious_rows:
+            pd.DataFrame(suspicious_rows).to_excel(writer, sheet_name='Suspicious Rows', index=False)
+    logger.info(f'Tally PR debug export written to {filename}')
 
 def parse_tally_purchase_register(raw_df):
     logger.info('Parsing Tally Purchase Register...')
     hdr_row = _find_tally_hdr(raw_df)
     logger.info(f'Header at row {hdr_row}')
 
-    cm = _map_tally_columns(raw_df.iloc[hdr_row].tolist())
+    header_values = raw_df.iloc[hdr_row].tolist()
+    cm = _map_tally_columns(header_values)
     logger.info(f'Tally column map: {cm}')
 
+    parsed_rows = []
+    suspicious_rows = []
     records = []
     for ri in range(hdr_row + 1, len(raw_df)):
         row = raw_df.iloc[ri].tolist()
@@ -195,8 +245,8 @@ def parse_tally_purchase_register(raw_df):
 
         tds       = gc('tds_prof') + gc('tds_rent')
         inv_val   = gross + tds
-        taxable   = max(inv_val - cgst - sgst - igst, 0.0)
         total_tax = cgst + sgst + igst
+        taxable   = max(inv_val - total_tax, 0.0)
 
         gstin  = gs('gstin').upper()
         inv_no = gs('inv_no')
@@ -213,28 +263,51 @@ def parse_tally_purchase_register(raw_df):
         except Exception:
             inv_date = pd.NaT
 
-        records.append({
+        parsed = {
             'GSTIN':         gstin,
             'Trade_Name':    name,
             'Invoice_No':    inv_no,
             'Invoice_Date':  inv_date,
-            'Taxable_Value': round(taxable, 2),
+            'Gross_Total':   round(gross, 2),
             'CGST':          round(cgst, 2),
             'SGST':          round(sgst, 2),
             'IGST':          round(igst, 2),
             'CESS':          0.0,
             'TOTAL_TAX':     round(total_tax, 2),
             'Invoice_Value': round(inv_val, 2),
-        })
+            'Taxable_Value': round(taxable, 2),
+        }
+
+        issues = []
+        if total_tax > inv_val + 0.01:
+            issues.append('TOTAL_TAX exceeds Invoice_Value')
+        if taxable > 0 and sgst > taxable * 0.30:
+            issues.append('SGST unusually high vs Taxable_Value')
+        if issues:
+            suspicious_rows.append({**parsed, 'Issue': '; '.join(issues)})
+
+        if len(parsed_rows) < 10:
+            parsed_rows.append(parsed.copy())
+
+        records.append(parsed)
 
     if not records:
         raise ValueError(
             'Tally Purchase Register: no data rows found. '
             'Ensure the file contains Purchase Register data with a Gross Total column.'
         )
+
+    _export_tally_parser_debug(header_values, cm, parsed_rows, suspicious_rows)
+
     df = pd.DataFrame(records)
     logger.info(f'Tally PR: {len(df)} rows extracted')
-    return _validate_books_df(df)
+    valid_df, no_itc, issues_df = _validate_books_df(df)
+    if suspicious_rows:
+        sr_df = pd.DataFrame(suspicious_rows)
+        sr_df['Source'] = 'tally_parser_suspicious'
+        issues_df = pd.concat([issues_df, sr_df], ignore_index=True) if not issues_df.empty else sr_df
+        logger.warning('Detected %d suspicious Tally PR row(s)', len(suspicious_rows))
+    return valid_df, no_itc, issues_df
 
 # ── GSTR-2B Excel parser ──────────────────────────────────────────────────────
 # Verified column positions from Book1.xlsx (data starts row 6):
