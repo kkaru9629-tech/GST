@@ -1,6 +1,6 @@
 """
 GST Reconciliation App
-Version: 10.1 — Professional Summary Report Design (Old Style)
+Version: 10.2 — Professional Accounting Style Report
 """
 
 import streamlit as st
@@ -36,193 +36,138 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="GST Reconciliation", layout="wide")
 
-# Professional styling for summary report
+# Professional accounting style
 st.markdown("""
 <style>
-    /* Main font */
+    /* Main font - Professional */
     .stApp, .stMarkdown, .stText, .stCaption, .stMetric,
     .stTabs [data-baseweb="tab"], button, label, input {
-        font-family: 'Segoe UI', 'Aptos', 'Calibri', sans-serif !important;
+        font-family: 'Segoe UI', 'Calibri', 'Arial', sans-serif !important;
     }
     
-    /* Summary Card Styles - Professional Accounting Look */
-    .summary-container {
+    /* Professional Summary Card */
+    .summary-card {
         background: white;
-        border-radius: 8px;
-        padding: 0;
-        margin-bottom: 20px;
-        border: 1px solid #e0e0e0;
+        border: 1px solid #d0d0d0;
+        border-radius: 4px;
+        margin-bottom: 16px;
         overflow: hidden;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     
-    .summary-header {
+    .summary-card-header {
         background: #1e3a5f;
         color: white;
-        padding: 12px 16px;
-        font-weight: 600;
-        font-size: 16px;
-        border-bottom: 1px solid #2c4e7a;
-    }
-    
-    .summary-row {
-        display: flex;
-        border-bottom: 1px solid #f0f0f0;
         padding: 10px 16px;
+        font-weight: 600;
+        font-size: 14px;
+        letter-spacing: 0.5px;
     }
     
-    .summary-row:last-child {
+    .summary-card-row {
+        display: flex;
+        border-bottom: 1px solid #e8e8e8;
+        padding: 8px 16px;
+    }
+    
+    .summary-card-row:last-child {
         border-bottom: none;
     }
     
-    .summary-label {
-        width: 45%;
-        font-weight: 500;
+    .summary-card-label {
+        width: 50%;
+        font-size: 13px;
         color: #333;
-        font-size: 14px;
     }
     
-    .summary-value {
-        width: 55%;
+    .summary-card-value {
+        width: 50%;
         text-align: right;
+        font-size: 13px;
         font-weight: 600;
-        font-size: 15px;
         color: #1e3a5f;
     }
     
-    .summary-value-positive {
-        color: #2e7d32;
-        font-weight: 700;
-    }
-    
-    .summary-value-negative {
-        color: #c62828;
-        font-weight: 700;
-    }
-    
-    .summary-total-row {
-        background: #f8f9fa;
+    .summary-card-total {
+        background: #f5f5f5;
         display: flex;
         border-top: 2px solid #1e3a5f;
-        padding: 12px 16px;
-        font-weight: 700;
+        padding: 10px 16px;
     }
     
-    .summary-total-label {
-        width: 45%;
-        font-size: 15px;
+    .summary-card-total-label {
+        width: 50%;
+        font-size: 14px;
         font-weight: 700;
         color: #1e3a5f;
     }
     
-    .summary-total-value {
-        width: 55%;
+    .summary-card-total-value {
+        width: 50%;
         text-align: right;
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
         color: #1e3a5f;
     }
     
-    /* Insight Cards - Clean and Professional */
-    .insight-card {
-        border-radius: 8px;
-        padding: 16px 20px;
-        text-align: center;
-        margin-bottom: 10px;
-        border: 1px solid #e0e0e0;
+    /* Metric Cards */
+    .metric-card {
         background: white;
-        transition: all 0.2s;
+        border: 1px solid #d0d0d0;
+        border-radius: 4px;
+        padding: 12px;
+        text-align: center;
     }
     
-    .insight-card .card-number {
-        font-size: 28px;
+    .metric-card .number {
+        font-size: 24px;
         font-weight: 700;
-        line-height: 1.2;
-        font-family: 'Segoe UI', 'Aptos', sans-serif;
+        color: #1e3a5f;
     }
     
-    .insight-card .card-label {
-        font-size: 12px;
-        font-weight: 600;
-        margin-top: 6px;
-        letter-spacing: 0.3px;
-        text-transform: uppercase;
+    .metric-card .label {
+        font-size: 11px;
         color: #666;
+        margin-top: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
     
-    .card-green { border-top: 3px solid #2e7d32; }
-    .card-green .card-number { color: #2e7d32; }
-    
-    .card-red { border-top: 3px solid #c62828; }
-    .card-red .card-number { color: #c62828; }
-    
-    .card-orange { border-top: 3px solid #ed6c02; }
-    .card-orange .card-number { color: #ed6c02; }
-    
-    .card-yellow { border-top: 3px solid #f9a825; }
-    .card-yellow .card-number { color: #f9a825; }
-    
-    /* Month-wise table styling - Grid/Table format */
-    .month-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13px;
-        margin: 10px 0;
-    }
-    
-    .month-table th {
-        background: #f5f5f5;
-        border: 1px solid #ddd;
-        padding: 10px 12px;
-        text-align: center;
-        font-weight: 600;
-        color: #333;
-    }
-    
-    .month-table td {
-        border: 1px solid #ddd;
-        padding: 8px 12px;
-        text-align: center;
-    }
-    
-    .month-table tr:hover {
-        background-color: #fafafa;
-    }
-    
-    .month-header {
-        font-weight: 600;
-        background-color: #f9f9f9;
-    }
-    
-    /* Dataframe styling */
-    .stDataFrame {
-        border: 1px solid #e0e0e0 !important;
-        border-radius: 8px !important;
-        overflow: hidden !important;
-    }
-    
+    /* Table styling */
     .stDataFrame table {
-        font-size: 13px !important;
+        font-size: 12px !important;
+        font-family: 'Segoe UI', 'Calibri', monospace !important;
     }
     
     .stDataFrame thead tr th {
-        background: #f5f5f5 !important;
+        background-color: #1e3a5f !important;
+        color: white !important;
         font-weight: 600 !important;
-        border-bottom: 1px solid #ddd !important;
+        padding: 10px 8px !important;
+        border: 1px solid #2c4e7a !important;
+    }
+    
+    .stDataFrame tbody tr td {
+        border: 1px solid #e0e0e0 !important;
+        padding: 8px 8px !important;
+    }
+    
+    .stDataFrame tbody tr:hover {
+        background-color: #f5f5f5 !important;
     }
     
     /* Tab styling */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-        background: #f8f9fa;
-        padding: 6px 6px 0 6px;
-        border-radius: 8px 8px 0 0;
+        gap: 2px;
+        background-color: #f0f0f0;
+        padding: 4px 4px 0 4px;
+        border-radius: 4px 4px 0 0;
     }
     
     .stTabs [data-baseweb="tab"] {
         padding: 8px 20px;
-        border-radius: 6px 6px 0 0;
+        font-size: 13px;
         font-weight: 500;
+        border-radius: 4px 4px 0 0;
     }
     
     .stTabs [aria-selected="true"] {
@@ -234,37 +179,35 @@ st.markdown("""
     hr {
         margin: 20px 0;
         border: none;
-        border-top: 1px solid #e0e0e0;
+        border-top: 1px solid #d0d0d0;
     }
     
-    /* Warning box */
+    /* Warning/Info boxes */
     .warning-box {
         background-color: #fff3e0;
-        border-left: 4px solid #ed6c02;
-        padding: 12px 16px;
-        border-radius: 4px;
-        margin: 12px 0;
-        font-size: 13px;
+        border-left: 3px solid #ed6c02;
+        padding: 10px 15px;
+        border-radius: 3px;
+        margin: 10px 0;
+        font-size: 12px;
     }
     
-    /* Info box */
     .info-box {
-        background-color: #e3f2fd;
-        border-left: 4px solid #1976d2;
-        padding: 12px 16px;
-        border-radius: 4px;
-        margin: 12px 0;
-        font-size: 13px;
+        background-color: #e8f0fe;
+        border-left: 3px solid #1e3a5f;
+        padding: 10px 15px;
+        border-radius: 3px;
+        margin: 10px 0;
+        font-size: 12px;
     }
     
-    /* Success box */
     .success-box {
         background-color: #e8f5e9;
-        border-left: 4px solid #2e7d32;
-        padding: 12px 16px;
-        border-radius: 4px;
-        margin: 12px 0;
-        font-size: 13px;
+        border-left: 3px solid #2e7d32;
+        padding: 10px 15px;
+        border-radius: 3px;
+        margin: 10px 0;
+        font-size: 12px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -303,7 +246,7 @@ with col2:
 
 tolerance = st.number_input(
     "Tolerance (₹)", value=DEFAULT_TOLERANCE, step=0.5, min_value=0.0,
-    help="Max acceptable tax difference (₹) for 'Matched'. Default: ₹1.00"
+    help="Max acceptable tax difference (₹) for 'Matched'"
 )
 
 # =================== PARSER ROUTER =================== #
@@ -417,10 +360,8 @@ def fmt_date(val) -> str:
 # =================== BUILD DETAIL DF FROM RECONCILIATION RESULTS =================== #
 
 def build_detail_df_from_results(matched_df, missing_2b_df, missing_books_df, trade_name_map, tolerance):
-    """Build invoice detail dataframe using reconciliation results (NOT raw data)"""
     rows = []
     
-    # Process matched invoices
     if not matched_df.empty:
         for _, row in matched_df.iterrows():
             gstin = row.get("GSTIN_2B") or row.get("GSTIN_Books", "")
@@ -446,7 +387,6 @@ def build_detail_df_from_results(matched_df, missing_2b_df, missing_books_df, tr
                 "Action Required": ACTION_MAP.get(remark, "")
             })
     
-    # Process missing in GSTR-2B (in Books but not in GSTR)
     if not missing_2b_df.empty:
         for _, row in missing_2b_df.iterrows():
             gstin = row.get("GSTIN", "")
@@ -467,7 +407,6 @@ def build_detail_df_from_results(matched_df, missing_2b_df, missing_books_df, tr
                 "Action Required": ACTION_MAP.get(remark, "")
             })
     
-    # Process missing in Books (in GSTR but not in Books)
     if not missing_books_df.empty:
         for _, row in missing_books_df.iterrows():
             gstin = row.get("GSTIN", "")
@@ -493,10 +432,8 @@ def build_detail_df_from_results(matched_df, missing_2b_df, missing_books_df, tr
 # =================== BUILD MONTH SUMMARY =================== #
 
 def build_month_summary(matched_df, missing_2b_df, missing_books_df, books_raw, gstr_raw):
-    """Build month-wise summary using reconciliation results"""
     rows = []
     
-    # Get all months from both raw data
     all_months = set()
     if not books_raw.empty and "Month" in books_raw.columns:
         all_months.update(books_raw["Month"].dropna().unique())
@@ -506,12 +443,9 @@ def build_month_summary(matched_df, missing_2b_df, missing_books_df, books_raw, 
     all_months.discard("NaT")
     
     for month in sorted(all_months):
-        # Books ITC from raw data
         b_tax = books_raw[books_raw["Month"] == month]["TOTAL_TAX"].sum() if not books_raw.empty else 0
-        # GSTR ITC from raw data
         g_tax = gstr_raw[gstr_raw["Month"] == month]["TOTAL_TAX"].sum() if not gstr_raw.empty else 0
         
-        # Missing counts from reconciliation results
         m2b_count = 0
         if not missing_2b_df.empty and "Invoice_Date" in missing_2b_df.columns:
             m2b = missing_2b_df.copy()
@@ -572,126 +506,109 @@ def apply_filters(df: pd.DataFrame, f_gstin: str, f_supplier: str, f_status: lis
 
 # =================== SUMMARY REPORT - PROFESSIONAL STYLE =================== #
 
-st.markdown("## 📊 Reconciliation Summary")
+st.markdown("## Reconciliation Summary")
 
 n_files = r.get("n_gstr_files", 1)
 if n_files > 1:
     st.caption(f"Across {n_files} GSTR-2B files: {', '.join(r.get('gstr_fmts', []))}")
 
-# Create two columns for layout
 col_left, col_right = st.columns([1, 1])
 
 with col_left:
-    # Summary Card - Professional boxed style
-    st.markdown("""
-    <div class="summary-container">
-        <div class="summary-header">RECONCILIATION SUMMARY</div>
-        <div class="summary-row">
-            <div class="summary-label">ITC - Books</div>
-            <div class="summary-value">₹ {:,.2f}</div>
+    st.markdown(f"""
+    <div class="summary-card">
+        <div class="summary-card-header">RECONCILIATION SUMMARY</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">ITC - Books</div>
+            <div class="summary-card-value">₹ {s['ITC_Books']:,.2f}</div>
         </div>
-        <div class="summary-row">
-            <div class="summary-label">ITC - GSTR-2B</div>
-            <div class="summary-value">₹ {:,.2f}</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">ITC - GSTR-2B</div>
+            <div class="summary-card-value">₹ {s['ITC_GSTR']:,.2f}</div>
         </div>
-        <div class="summary-row">
-            <div class="summary-label">Difference</div>
-            <div class="summary-value {}">₹ {:,.2f}</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">Difference</div>
+            <div class="summary-card-value" style="color: {'#2e7d32' if s['ITC_Diff'] >= 0 else '#c62828'}">₹ {abs(s['ITC_Diff']):,.2f}</div>
         </div>
-        <div class="summary-row">
-            <div class="summary-label">ITC at Risk</div>
-            <div class="summary-value summary-value-negative">₹ {:,.2f}</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">ITC at Risk</div>
+            <div class="summary-card-value" style="color: #c62828">₹ {s['ITC_at_Risk']:,.2f}</div>
         </div>
-        <div class="summary-total-row">
-            <div class="summary-total-label">Match %</div>
-            <div class="summary-total-value">{:.2f}%</div>
+        <div class="summary-card-total">
+            <div class="summary-card-total-label">Match %</div>
+            <div class="summary-card-total-value">{s['Match_%']:.2f}%</div>
         </div>
     </div>
-    """.format(
-        s["ITC_Books"],
-        s["ITC_GSTR"],
-        "summary-value-positive" if s["ITC_Diff"] >= 0 else "summary-value-negative",
-        abs(s["ITC_Diff"]),
-        s["ITC_at_Risk"],
-        s["Match_%"]
-    ), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 with col_right:
-    # Counts Card
-    st.markdown("""
-    <div class="summary-container">
-        <div class="summary-header">INVOICE COUNTS</div>
-        <div class="summary-row">
-            <div class="summary-label">Total Books</div>
-            <div class="summary-value">{:,}</div>
+    st.markdown(f"""
+    <div class="summary-card">
+        <div class="summary-card-header">INVOICE COUNTS</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">Total Books</div>
+            <div class="summary-card-value">{s['Total_Books']:,}</div>
         </div>
-        <div class="summary-row">
-            <div class="summary-label">Total GSTR-2B</div>
-            <div class="summary-value">{:,}</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">Total GSTR-2B</div>
+            <div class="summary-card-value">{s['Total_GSTR']:,}</div>
         </div>
-        <div class="summary-row">
-            <div class="summary-label">✅ Matched</div>
-            <div class="summary-value summary-value-positive">{:,}</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">✅ Matched</div>
+            <div class="summary-card-value" style="color: #2e7d32">{s['Matched']:,}</div>
         </div>
-        <div class="summary-row">
-            <div class="summary-label">⚠️ Tax Difference</div>
-            <div class="summary-value summary-value-negative">{:,}</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">⚠️ Tax Difference</div>
+            <div class="summary-card-value" style="color: #ed6c02">{s['Tax_Diff']:,}</div>
         </div>
-        <div class="summary-row">
-            <div class="summary-label">❌ Missing in 2B</div>
-            <div class="summary-value summary-value-negative">{:,}</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">❌ Missing in 2B</div>
+            <div class="summary-card-value" style="color: #c62828">{s['Missing_2B']:,}</div>
         </div>
-        <div class="summary-row">
-            <div class="summary-label">📕 Missing in Books</div>
-            <div class="summary-value summary-value-negative">{:,}</div>
+        <div class="summary-card-row">
+            <div class="summary-card-label">📕 Missing in Books</div>
+            <div class="summary-card-value" style="color: #c62828">{s['Missing_Books']:,}</div>
         </div>
     </div>
-    """.format(
-        s["Total_Books"],
-        s["Total_GSTR"],
-        s["Matched"],
-        s["Tax_Diff"],
-        s["Missing_2B"],
-        s["Missing_Books"]
-    ), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# Quick insight cards (4 across)
-st.markdown("---")
+# Metric cards row
+st.markdown("<br>", unsafe_allow_html=True)
 c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    st.markdown("""
-    <div class="insight-card card-green">
-        <div class="card-number">{}</div>
-        <div class="card-label">✅ MATCHED</div>
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="number">{s['Matched']}</div>
+        <div class="label">✅ MATCHED</div>
     </div>
-    """.format(s["Matched"]), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 with c2:
-    st.markdown("""
-    <div class="insight-card card-red">
-        <div class="card-number">{}</div>
-        <div class="card-label">❌ MISSING IN 2B</div>
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="number">{s['Missing_2B']}</div>
+        <div class="label">❌ MISSING IN 2B</div>
     </div>
-    """.format(s["Missing_2B"]), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 with c3:
-    st.markdown("""
-    <div class="insight-card card-orange">
-        <div class="card-number">{}</div>
-        <div class="card-label">📕 MISSING IN BOOKS</div>
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="number">{s['Missing_Books']}</div>
+        <div class="label">📕 MISSING IN BOOKS</div>
     </div>
-    """.format(s["Missing_Books"]), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 with c4:
-    st.markdown("""
-    <div class="insight-card card-yellow">
-        <div class="card-number">{}</div>
-        <div class="card-label">⚠️ TAX DIFFERENCES</div>
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="number">{s['Tax_Diff']}</div>
+        <div class="label">⚠️ TAX DIFFERENCES</div>
     </div>
-    """.format(s["Tax_Diff"]), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# =================== BUILD DATA FROM RECONCILIATION RESULTS =================== #
+# =================== BUILD DATA =================== #
 
 trade_name_map = r.get("trade_name_mapping", {})
 detail_df = build_detail_df_from_results(
@@ -710,32 +627,30 @@ month_summary = build_month_summary(
     r.get("gstr_raw", pd.DataFrame())
 )
 
-# =================== MONTH-WISE SUMMARY (TABLE FORMAT) =================== #
+# =================== MONTH-WISE SUMMARY =================== #
 
 if not month_summary.empty:
-    st.markdown("---")
-    st.markdown("## 📅 Month-wise Summary")
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("## Month-wise Summary")
     
-    # Convert month format for display
     month_summary_display = month_summary.copy()
     month_summary_display["Month"] = month_summary_display["Month"].apply(
         lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
     )
     
-    # Style the dataframe for professional table look
     styled_df = month_summary_display.style.format({
         "Books ITC": "{:,.2f}",
         "GSTR ITC": "{:,.2f}",
         "Difference": "{:,.2f}"
     }).set_properties(**{
         'text-align': 'center',
-        'padding': '8px 12px',
-        'font-size': '13px'
+        'padding': '8px',
+        'font-size': '12px'
     }).set_table_styles([
-        {'selector': 'thead tr th', 'props': [('background', '#f5f5f5'), ('font-weight', '600'), ('border', '1px solid #ddd'), ('padding', '10px 12px')]},
-        {'selector': 'tbody tr td', 'props': [('border', '1px solid #e0e0e0'), ('padding', '8px 12px')]},
-        {'selector': 'tbody tr:hover', 'props': [('background', '#fafafa')]},
-        {'selector': 'table', 'props': [('border-collapse', 'collapse'), ('width', '100%'), ('border', '1px solid #ddd'), ('border-radius', '8px')]}
+        {'selector': 'thead tr th', 'props': [('background', '#1e3a5f'), ('color', 'white'), ('border', '1px solid #2c4e7a'), ('padding', '10px'), ('font-weight', '600')]},
+        {'selector': 'tbody tr td', 'props': [('border', '1px solid #ddd'), ('padding', '8px')]},
+        {'selector': 'tbody tr:hover', 'props': [('background', '#f5f5f5')]},
+        {'selector': 'table', 'props': [('border-collapse', 'collapse'), ('width', '100%')]}
     ])
     
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
@@ -743,8 +658,8 @@ if not month_summary.empty:
 
 # =================== FILTER CONTROLS =================== #
 
-st.markdown("---")
-st.markdown("### 🔍 Filter Results")
+st.markdown("<hr>", unsafe_allow_html=True)
+st.markdown("### Filter Results")
 filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([1, 1, 1, 1])
 
 with filter_col1:
@@ -766,7 +681,6 @@ with filter_col4:
 
 # =================== TABS =================== #
 
-# Data issues
 all_issues = r["issues"].copy() if not r["issues"].empty else pd.DataFrame()
 if "duplicate_issues" in r and not r["duplicate_issues"].empty:
     all_issues = pd.concat([x for x in [all_issues, r["duplicate_issues"]] if not x.empty], ignore_index=True)
@@ -863,44 +777,268 @@ if not r["no_itc"].empty:
     no_itc_df["Invoice_Date"] = no_itc_df["Invoice_Date"].apply(fmt_date)
     no_itc_df = no_itc_df[no_itc_df["Invoice_Value"].astype(float) > 0]
     if not no_itc_df.empty:
-        st.markdown("---")
-        st.markdown("## 🟡 Zero ITC Invoices")
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown("## Zero ITC Invoices")
         st.dataframe(no_itc_df, use_container_width=True, hide_index=True)
+
+# =================== EXCEL EXPORT WITH PROFESSIONAL FORMATTING =================== #
+
+def apply_excel_formatting(writer, sheet_name, df, headers, col_widths=None, freeze_panes=True):
+    """Apply professional Excel formatting to a worksheet"""
+    workbook = writer.book
+    worksheet = writer.sheets[sheet_name]
+    
+    # Define formats
+    header_format = workbook.add_format({
+        'bold': True,
+        'font_color': 'white',
+        'bg_color': '#1e3a5f',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 11,
+        'font_name': 'Calibri'
+    })
+    
+    number_format = workbook.add_format({
+        'num_format': '#,##0.00',
+        'border': 1,
+        'align': 'right',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    date_format = workbook.add_format({
+        'num_format': 'dd-mmm-yyyy',
+        'border': 1,
+        'align': 'center',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    center_format = workbook.add_format({
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    # Write headers
+    for col_idx, header in enumerate(headers):
+        worksheet.write(0, col_idx, header, header_format)
+    
+    # Write data
+    for row_idx, row in df.iterrows():
+        for col_idx, col_name in enumerate(headers):
+            value = row[col_name]
+            
+            # Determine format based on column name
+            if col_name in ['ITC Books', 'ITC 2B', 'Difference', 'Taxable', 'ITC', 'Taxable_Value', 'TOTAL_TAX', 'Invoice_Value', 'Amount', 'Value']:
+                worksheet.write(row_idx + 1, col_idx, float(value) if pd.notna(value) else 0, number_format)
+            elif 'Date' in col_name or col_name == 'Invoice_Date':
+                if pd.notna(value):
+                    try:
+                        dt = pd.to_datetime(value)
+                        worksheet.write_datetime(row_idx + 1, col_idx, dt.to_pydatetime(), date_format)
+                    except:
+                        worksheet.write(row_idx + 1, col_idx, str(value), text_format)
+                else:
+                    worksheet.write(row_idx + 1, col_idx, "", text_format)
+            elif col_name in ['Remarks', 'Status', 'Action Required', 'Issue', 'Source']:
+                worksheet.write(row_idx + 1, col_idx, str(value) if pd.notna(value) else "", center_format)
+            else:
+                worksheet.write(row_idx + 1, col_idx, str(value) if pd.notna(value) else "", text_format)
+    
+    # Auto-adjust column widths
+    if col_widths:
+        for col_idx, width in enumerate(col_widths):
+            worksheet.set_column(col_idx, col_idx, width)
+    else:
+        for col_idx, header in enumerate(headers):
+            max_len = len(header)
+            for row_idx, row in df.iterrows():
+                val = str(row[header]) if pd.notna(row[header]) else ""
+                max_len = max(max_len, len(val))
+            worksheet.set_column(col_idx, col_idx, min(max_len + 2, 35))
+    
+    # Freeze header row
+    if freeze_panes:
+        worksheet.freeze_panes(1, 0)
+
+
+def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map):
+    """Export with professional Excel formatting"""
+    output = io.BytesIO()
+    
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        
+        # ========== SUMMARY SHEET ==========
+        summary_data = {
+            'Particulars': [
+                'ITC - Books',
+                'ITC - GSTR-2B',
+                'Difference',
+                'ITC at Risk',
+                'Match %',
+                '',
+                'Total Books',
+                'Total GSTR-2B',
+                'Matched',
+                'Tax Difference',
+                'Missing in 2B',
+                'Missing in Books'
+            ],
+            'Value': [
+                s['ITC_Books'],
+                s['ITC_GSTR'],
+                abs(s['ITC_Diff']),
+                s['ITC_at_Risk'],
+                s['Match_%'],
+                '',
+                s['Total_Books'],
+                s['Total_GSTR'],
+                s['Matched'],
+                s['Tax_Diff'],
+                s['Missing_2B'],
+                s['Missing_Books']
+            ]
+        }
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        
+        # Apply formatting to Summary sheet
+        workbook = writer.book
+        ws_summary = writer.sheets['Summary']
+        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#1e3a5f', 'font_color': 'white', 'border': 1, 'align': 'center'})
+        number_fmt = workbook.add_format({'num_format': '#,##0.00', 'border': 1, 'align': 'right'})
+        integer_fmt = workbook.add_format({'num_format': '#,##0', 'border': 1, 'align': 'right'})
+        text_fmt = workbook.add_format({'border': 1, 'align': 'left'})
+        
+        ws_summary.write(0, 0, 'Particulars', header_fmt)
+        ws_summary.write(0, 1, 'Value', header_fmt)
+        
+        for i, row in summary_df.iterrows():
+            val = row['Value']
+            if i in [0,1,2,3]:  # ITC values
+                ws_summary.write(i+1, 1, float(val) if pd.notna(val) else 0, number_fmt)
+            elif i == 4:  # Match %
+                ws_summary.write(i+1, 1, float(val) if pd.notna(val) else 0, number_fmt)
+            elif i in [6,7,8,9,10,11]:  # Counts
+                ws_summary.write(i+1, 1, int(val) if pd.notna(val) else 0, integer_fmt)
+            else:
+                ws_summary.write(i+1, 1, '' if pd.isna(val) else str(val), text_fmt)
+        
+        ws_summary.set_column(0, 0, 20)
+        ws_summary.set_column(1, 1, 18)
+        ws_summary.freeze_panes(1, 0)
+        
+        # ========== MONTH-WISE SUMMARY SHEET ==========
+        if not month_summary.empty:
+            ms_display = month_summary.copy()
+            ms_display["Month"] = ms_display["Month"].apply(
+                lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
+            )
+            ms_display.to_excel(writer, sheet_name='Month-wise Summary', index=False)
+            apply_excel_formatting(writer, 'Month-wise Summary', ms_display, list(ms_display.columns), 
+                                   [18, 15, 15, 15, 12, 12, 12])
+        
+        # ========== INVOICE DETAILS SHEET ==========
+        if not detail_df.empty:
+            detail_export = detail_df.copy()
+            detail_export['Date'] = pd.to_datetime(detail_export['Date'], format='%d-%b-%Y', errors='coerce')
+            detail_export.to_excel(writer, sheet_name='Invoice Details', index=False)
+            apply_excel_formatting(writer, 'Invoice Details', detail_export, list(detail_export.columns),
+                                   [18, 20, 25, 18, 12, 14, 14, 14, 18, 20])
+        
+        # ========== MISSING IN 2B SHEET ==========
+        if not r.get("missing_2b", pd.DataFrame()).empty:
+            m2b = r["missing_2b"].copy()
+            m2b["Invoice_Date"] = pd.to_datetime(m2b["Invoice_Date"], errors='coerce')
+            m2b["Supplier"] = m2b["GSTIN"].map(trade_name_map).fillna(m2b["Trade_Name"])
+            m2b_export = m2b[["GSTIN", "Supplier", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]]
+            m2b_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "ITC"]
+            m2b_export.to_excel(writer, sheet_name='Missing in 2B', index=False)
+            apply_excel_formatting(writer, 'Missing in 2B', m2b_export, list(m2b_export.columns),
+                                   [18, 30, 20, 14, 15, 15])
+        
+        # ========== MISSING IN BOOKS SHEET ==========
+        if not r.get("missing_books", pd.DataFrame()).empty:
+            mb = r["missing_books"].copy()
+            mb["Invoice_Date"] = pd.to_datetime(mb["Invoice_Date"], errors='coerce')
+            mb["Supplier"] = mb["GSTIN"].map(trade_name_map).fillna(mb["Trade_Name"])
+            mb_export = mb[["GSTIN", "Supplier", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]]
+            mb_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "ITC"]
+            mb_export.to_excel(writer, sheet_name='Missing in Books', index=False)
+            apply_excel_formatting(writer, 'Missing in Books', mb_export, list(mb_export.columns),
+                                   [18, 30, 20, 14, 15, 15])
+        
+        # ========== TAX DIFFERENCES SHEET ==========
+        if not r.get("tax_diff", pd.DataFrame()).empty:
+            td = r["tax_diff"].copy()
+            td_export = td[[c for c in td.columns if c not in ['TAX_MATCH']]]
+            td_export.to_excel(writer, sheet_name='Tax Differences', index=False)
+            apply_excel_formatting(writer, 'Tax Differences', td_export, list(td_export.columns))
+        
+        # ========== DUPLICATE ISSUES SHEET ==========
+        if not r.get("duplicate_issues", pd.DataFrame()).empty:
+            dup = r["duplicate_issues"].copy()
+            if "Invoice_Date" in dup.columns:
+                dup["Invoice_Date"] = pd.to_datetime(dup["Invoice_Date"], errors='coerce')
+            dup.to_excel(writer, sheet_name='Duplicate Issues', index=False)
+            apply_excel_formatting(writer, 'Duplicate Issues', dup, list(dup.columns))
+        
+        # ========== DATA ISSUES SHEET ==========
+        all_issues_local = r["issues"].copy() if not r["issues"].empty else pd.DataFrame()
+        if "duplicate_issues" in r and not r["duplicate_issues"].empty:
+            all_issues_local = pd.concat([x for x in [all_issues_local, r["duplicate_issues"]] if not x.empty], ignore_index=True)
+        
+        if not all_issues_local.empty:
+            issues_export = all_issues_local.copy()
+            if "Invoice_Date" in issues_export.columns:
+                issues_export["Invoice_Date"] = pd.to_datetime(issues_export["Invoice_Date"], errors='coerce')
+            issues_export.to_excel(writer, sheet_name='Data Issues', index=False)
+            apply_excel_formatting(writer, 'Data Issues', issues_export, list(issues_export.columns))
+        
+        # ========== NO ITC SHEET ==========
+        if not r.get("no_itc", pd.DataFrame()).empty:
+            ni = r["no_itc"].copy()
+            ni["Invoice_Date"] = pd.to_datetime(ni["Invoice_Date"], errors='coerce')
+            ni_export = ni[["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "Invoice_Value"]]
+            ni_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "Invoice Value"]
+            ni_export.to_excel(writer, sheet_name='Zero ITC', index=False)
+            apply_excel_formatting(writer, 'Zero ITC', ni_export, list(ni_export.columns),
+                                   [18, 30, 20, 14, 15, 15])
+    
+    output.seek(0)
+    return output.getvalue()
+
 
 # =================== DOWNLOAD BUTTONS =================== #
 
-st.markdown("---")
+st.markdown("<hr>", unsafe_allow_html=True)
 col_dl1, col_dl2 = st.columns(2)
 
-def export_to_excel(r, detail_df, month_summary, trade_name_map):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        detail_df.to_excel(writer, sheet_name="Invoice Details", index=False)
-        month_summary.to_excel(writer, sheet_name="Month-wise Summary", index=False)
-        
-        if not r.get("matched", pd.DataFrame()).empty:
-            r["matched"].to_excel(writer, sheet_name="Matched", index=False)
-        if not r.get("missing_2b", pd.DataFrame()).empty:
-            r["missing_2b"].to_excel(writer, sheet_name="Missing in 2B", index=False)
-        if not r.get("missing_books", pd.DataFrame()).empty:
-            r["missing_books"].to_excel(writer, sheet_name="Missing in Books", index=False)
-        
-        summary_df = pd.DataFrame([r["summary"]])
-        summary_df.to_excel(writer, sheet_name="Summary", index=False)
-    
-    return output.getvalue()
-
 with col_dl1:
+    excel_data = export_to_excel_formatted(r, detail_df, month_summary, trade_name_map)
     st.download_button(
-        "📥 Download Full Report",
-        data=export_to_excel(r, detail_df, month_summary, trade_name_map),
-        file_name=f"reconciliation_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        "📥 Download Full Report (Excel)",
+        data=excel_data,
+        file_name=f"reconciliation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
 
 with col_dl2:
-    def export_issues(r, all_issues):
+    def export_issues_simple(r, all_issues):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             if not r.get("missing_2b", pd.DataFrame()).empty:
@@ -914,9 +1052,9 @@ with col_dl2:
         return output.getvalue()
     
     st.download_button(
-        "📥 Download Issues Only",
-        data=export_issues(r, all_issues),
-        file_name=f"issues_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        "📥 Download Issues Only (Excel)",
+        data=export_issues_simple(r, all_issues),
+        file_name=f"issues_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
