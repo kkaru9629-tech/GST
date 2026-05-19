@@ -836,19 +836,25 @@ def create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r):
     all_months = [m for m in all_months if m and m not in ('', 'NaT')]
     
     for month in sorted(all_months):
-        month_name = pd.to_datetime(month + '-01', format='%Y-%m').strftime('%b-%Y')
-        
-        matched_filtered = r.get('matched', pd.DataFrame())
-        missing_2b_filtered = r.get('missing_2b', pd.DataFrame())
-        missing_books_filtered = r.get('missing_books', pd.DataFrame())
+        # SAFELY convert month to display name - FIXED
+        try:
+            if isinstance(month, str) and len(month) >= 7:
+                month_name = pd.to_datetime(month + '-01', format='%Y-%m-%d').strftime('%b-%Y')
+            elif isinstance(month, str) and len(month) >= 4:
+                month_name = month
+            else:
+                month_name = str(month)
+        except Exception:
+            month_name = str(month)
         
         rows = []
         
-        if not missing_2b_filtered.empty:
-            m2b_month = missing_2b_filtered.copy()
-            m2b_month['MonthCheck'] = pd.to_datetime(m2b_month['Invoice_Date'], errors='coerce').dt.to_period('M').astype(str)
-            m2b_month = m2b_month[m2b_month['MonthCheck'] == month]
-            for _, row in m2b_month.iterrows():
+        # Add missing in GST (2B)
+        if not r.get('missing_2b', pd.DataFrame()).empty:
+            m2b = r['missing_2b'].copy()
+            m2b['MonthCheck'] = pd.to_datetime(m2b['Invoice_Date'], errors='coerce').dt.to_period('M').astype(str)
+            m2b_filtered = m2b[m2b['MonthCheck'] == month]
+            for _, row in m2b_filtered.iterrows():
                 rows.append({
                     'GSTIN': row.get('GSTIN', ''),
                     'Supplier': trade_name_map.get(row.get('GSTIN', ''), row.get('Trade_Name', '')),
@@ -861,11 +867,12 @@ def create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r):
                     'Action Required': 'Follow up with supplier'
                 })
         
-        if not missing_books_filtered.empty:
-            mb_month = missing_books_filtered.copy()
-            mb_month['MonthCheck'] = pd.to_datetime(mb_month['Invoice_Date'], errors='coerce').dt.to_period('M').astype(str)
-            mb_month = mb_month[mb_month['MonthCheck'] == month]
-            for _, row in mb_month.iterrows():
+        # Add missing in Books
+        if not r.get('missing_books', pd.DataFrame()).empty:
+            mb = r['missing_books'].copy()
+            mb['MonthCheck'] = pd.to_datetime(mb['Invoice_Date'], errors='coerce').dt.to_period('M').astype(str)
+            mb_filtered = mb[mb['MonthCheck'] == month]
+            for _, row in mb_filtered.iterrows():
                 rows.append({
                     'GSTIN': row.get('GSTIN', ''),
                     'Supplier': trade_name_map.get(row.get('GSTIN', ''), row.get('Trade_Name', '')),
@@ -878,8 +885,10 @@ def create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r):
                     'Action Required': 'Record purchase entry'
                 })
         
-        if not matched_filtered.empty:
-            for _, row in matched_filtered.iterrows():
+        # Add matched and tax difference
+        if not r.get('matched', pd.DataFrame()).empty:
+            matched = r['matched'].copy()
+            for _, row in matched.iterrows():
                 inv_date = row.get('Invoice_Date_2B') or row.get('Invoice_Date_Books')
                 if pd.notna(inv_date):
                     inv_month = pd.to_datetime(inv_date).to_period('M').astype(str)
@@ -888,7 +897,7 @@ def create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r):
                         itc_books = float(row.get('TOTAL_TAX_Books', 0) or 0)
                         itc_gstr = float(row.get('TOTAL_TAX_2B', 0) or 0)
                         diff = itc_gstr - itc_books
-                        remark = "✅ Matched" if abs(diff) <= tol else "⚠️ Tax Difference"
+                        remark = "✅ Matched" if abs(diff) <= DEFAULT_TOLERANCE else "⚠️ Tax Difference"
                         rows.append({
                             'GSTIN': gstin,
                             'Supplier': trade_name_map.get(gstin, row.get('Trade_Name_2B') or row.get('Trade_Name_Books', '')),
@@ -988,35 +997,37 @@ def apply_professional_formatting(writer, sheet_name, df, headers, include_title
     row_num += 1
     
     # Write data
-    for data_row_idx, row in df.iterrows():
-        for col_idx, col_name in enumerate(headers):
-            value = row[col_name]
-            col_lower = col_name.lower()
-            
-            if any(term in col_lower for term in ['itc', 'difference', 'taxable', 'value', 'amount', 'cgst', 'sgst', 'igst', 'cess']):
-                worksheet.write(row_num + data_row_idx, col_idx, float(value) if pd.notna(value) else 0, number_format)
-            elif col_lower in ['matched', 'missing 2b', 'missing books', 'count']:
-                worksheet.write(row_num + data_row_idx, col_idx, int(value) if pd.notna(value) else 0, integer_format)
-            elif 'date' in col_lower or col_name == 'Invoice Date':
-                if pd.notna(value):
-                    try:
-                        dt = pd.to_datetime(value)
-                        worksheet.write_datetime(row_num + data_row_idx, col_idx, dt.to_pydatetime(), date_format)
-                    except:
-                        worksheet.write(row_num + data_row_idx, col_idx, str(value), text_format)
+    if not df.empty:
+        for data_row_idx, row in df.iterrows():
+            for col_idx, col_name in enumerate(headers):
+                value = row[col_name]
+                col_lower = col_name.lower()
+                
+                if any(term in col_lower for term in ['itc', 'difference', 'taxable', 'value', 'amount', 'cgst', 'sgst', 'igst', 'cess']):
+                    worksheet.write(row_num + data_row_idx, col_idx, float(value) if pd.notna(value) else 0, number_format)
+                elif col_lower in ['matched', 'missing 2b', 'missing books', 'count']:
+                    worksheet.write(row_num + data_row_idx, col_idx, int(value) if pd.notna(value) else 0, integer_format)
+                elif 'date' in col_lower or col_name == 'Invoice Date':
+                    if pd.notna(value):
+                        try:
+                            dt = pd.to_datetime(value)
+                            worksheet.write_datetime(row_num + data_row_idx, col_idx, dt.to_pydatetime(), date_format)
+                        except:
+                            worksheet.write(row_num + data_row_idx, col_idx, str(value), text_format)
+                    else:
+                        worksheet.write(row_num + data_row_idx, col_idx, "", text_format)
+                elif col_name in ['Remarks', 'Action Required', 'Source', 'Issue']:
+                    worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", center_format)
                 else:
-                    worksheet.write(row_num + data_row_idx, col_idx, "", text_format)
-            elif col_name in ['Remarks', 'Action Required', 'Source', 'Issue']:
-                worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", center_format)
-            else:
-                worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", text_format)
+                    worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", text_format)
     
     # Auto-fit column widths
     for col_idx, header in enumerate(headers):
         max_len = len(header)
-        for data_row_idx, row in df.iterrows():
-            val = str(row[header]) if pd.notna(row[header]) else ""
-            max_len = max(max_len, min(len(val), 35))
+        if not df.empty:
+            for data_row_idx, row in df.iterrows():
+                val = str(row[header]) if pd.notna(row[header]) else ""
+                max_len = max(max_len, min(len(val), 35))
         worksheet.set_column(col_idx, col_idx, max_len + 2)
     
     # Freeze header row
@@ -1125,21 +1136,21 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
             apply_professional_formatting(writer, 'Missing in Books', mb_export, list(mb_export.columns), 
                                          include_title=False)
         
-        # ========== SUPPLIER WISE ITC SUMMARY (Matching Old Summary Style) ==========
+        # ========== SUPPLIER WISE ITC SUMMARY ==========
         supplier_summary = create_supplier_wise_summary(books_raw, gstr_raw, trade_name_map)
         if not supplier_summary.empty:
             supplier_summary.to_excel(writer, sheet_name='Supplier Wise ITC Summary', index=False)
             apply_professional_formatting(writer, 'Supplier Wise ITC Summary', supplier_summary, 
                                          list(supplier_summary.columns), include_title=False)
         
-        # ========== SUPPLIER DRILL DOWN (Matching Old Summary Style) ==========
+        # ========== SUPPLIER DRILL DOWN ==========
         supplier_drill = create_supplier_drill_down(r, trade_name_map, detail_df)
         if not supplier_drill.empty:
             supplier_drill.to_excel(writer, sheet_name='Supplier Drill Down', index=False)
             apply_professional_formatting(writer, 'Supplier Drill Down', supplier_drill, 
                                          list(supplier_drill.columns), include_title=False)
         
-        # ========== MONTHLY SHEETS (Matching Old Summary Style) ==========
+        # ========== MONTHLY SHEETS ==========
         monthly_sheets = create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r)
         for month_name, month_df in monthly_sheets.items():
             if not month_df.empty and len(month_df) > 0:
