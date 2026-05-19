@@ -1,6 +1,6 @@
 """
-GST Reconciliation Engine  v7.5
-Fixed: Grouping normalization - only removes special characters, no numeric extraction
+GST Reconciliation Engine  v7.6
+Fixed: Grouping uses numeric core to bring together invoices like '011' and 'SUN-INV/011'
 """
 
 import pandas as pd
@@ -333,39 +333,45 @@ def create_trade_name_mapping(gstr_df, books_df):
                 if g and n: m[g]=n
     return m
 
-# ── group invoices with normalized invoice numbers (FIXED - NO NUMERIC EXTRACTION) ──
+# ── group invoices with normalized invoice numbers (FIXED - USES NUMERIC CORE) ──
 
 def normalize_invoice_for_grouping(inv: str) -> str:
     """
     Normalize invoice number for grouping purposes.
-    ONLY removes special characters - preserves digits and letters.
-    Numeric extraction happens ONLY in Level 3 matching.
+    Extract numeric core and remove leading zeros to group
+    invoices like '011' and 'SUN-INV/011' together.
     
     Examples:
-        SUN-INV/011  ->  SUNINV011
-        011          ->  011
-        INV/001      ->  INV001
+        SUN-INV/011  ->  '11'
+        011          ->  '11'
+        INV/00123    ->  '123'
+        ABC          ->  'ABC' (no digits, keep as is)
     """
     if not inv:
         return ''
     s = str(inv).strip().upper()
-    # ONLY remove special characters - keep all alphanumeric
+    # Extract all digits
+    digits = re.sub(r'\D', '', s)
+    if digits:
+        # Remove leading zeros by converting to int then back to string
+        return str(int(digits))
+    # If no digits, clean special characters
     return re.sub(r'[^A-Z0-9]', '', s)
 
 def group_invoices(df):
     """
     Group invoices using normalized invoice numbers to ensure
-    invoices like 'SUN-INV/011' and 'SUNINV011' are grouped together.
+    invoices like '011' and 'SUN-INV/011' are grouped together.
     
     INCLUDES Invoice_Date in grouping to prevent cross-month false matches.
-    Grouping only removes special characters - no numeric extraction.
+    Grouping uses numeric core to bring together invoices with same digits.
     """
     if df.empty:
         return df
     
     df = df.copy()
     
-    # Create normalized invoice number for grouping (only removes special chars)
+    # Create normalized invoice number for grouping (extract numeric core)
     df['_norm_inv_for_grouping'] = df['Invoice_No'].apply(
         lambda x: normalize_invoice_for_grouping(_s(x))
     )
@@ -382,7 +388,7 @@ def group_invoices(df):
     
     grouped = grouped.drop(columns=['_norm_inv_for_grouping'])
     
-    logger.info(f'Grouped {len(df)} → {len(grouped)} (grouping only removes special chars)')
+    logger.info(f'Grouped {len(df)} → {len(grouped)} (using numeric core for grouping)')
     return grouped
 
 # ── detect duplicates ─────────────────────────────────────────────────────────
@@ -502,9 +508,6 @@ def level2_normalized_match(g, b, tol):
     
     Key: GSTIN + Invoice_Date + normalized_invoice_no
     Guard: TOTAL_TAX within tolerance
-    
-    FIXED: Removed duplicate-filtering block that was preventing rows from
-    reaching Level 3 matching. Now includes Invoice_Date in key.
     """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
