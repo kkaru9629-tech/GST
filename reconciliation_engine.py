@@ -1,8 +1,7 @@
 """
 GST Reconciliation Engine  v7.3
-Fixed: Level 2 and Level 3 matching now include Invoice Date
-Improved normalization for Level 2 (removes special characters, keeps alphanumeric)
-Improved numeric core extraction for Level 3 (removes leading zeros)
+Fixed: Grouping now includes Invoice_Date to be consistent with matching levels
+Level 2 and Level 3 matching include Invoice Date as required
 """
 
 import pandas as pd
@@ -335,7 +334,7 @@ def create_trade_name_mapping(gstr_df, books_df):
                 if g and n: m[g]=n
     return m
 
-# ── group invoices with normalized invoice numbers (FIXED) ────────────────────
+# ── group invoices with normalized invoice numbers (FIXED - INCLUDES DATE) ───
 
 def normalize_invoice_for_grouping(inv: str) -> str:
     """
@@ -359,8 +358,8 @@ def group_invoices(df):
     Group invoices using normalized invoice numbers to ensure
     invoices like 'SUN-INV/011' and '011' are grouped together.
     
-    FIXED: Removed Invoice_Date from grouping keys to prevent
-    same invoice from being split across different dates.
+    FIXED: Now includes Invoice_Date in grouping to be consistent with
+    Level 1, Level 2, and Level 3 matching requirements where date must match.
     """
     if df.empty:
         return df
@@ -375,20 +374,20 @@ def group_invoices(df):
     sc = [c for c in ['Taxable_Value', 'CGST', 'SGST', 'IGST', 'CESS', 'TOTAL_TAX', 'Invoice_Value'] 
           if c in df.columns]
     
-    # FIXED: Group by GSTIN + normalized invoice number only (removed Invoice_Date)
-    grouped = df.groupby(['GSTIN', '_norm_inv_for_grouping'], as_index=False).agg({
+    # FIXED: Group by GSTIN + Invoice_Date + normalized invoice number
+    # This ensures invoices are grouped properly before matching stages
+    grouped = df.groupby(['GSTIN', 'Invoice_Date', '_norm_inv_for_grouping'], as_index=False).agg({
         **{col: 'sum' for col in sc},
         'Trade_Name': lambda x: next((v for v in x if v and str(v).strip()), ''),
-        'Invoice_No': lambda x: next((v for v in x if v and str(v).strip()), ''),  # Keep one raw invoice number
-        'Invoice_Date': lambda x: next((v for v in x if pd.notna(v)), pd.NaT)  # Keep first valid date
+        'Invoice_No': lambda x: next((v for v in x if v and str(v).strip()), '')  # Keep one raw invoice number
     })
     
     grouped = grouped.drop(columns=['_norm_inv_for_grouping'])
     
-    logger.info(f'Grouped {len(df)} → {len(grouped)} (using normalized invoice numbers, without date)')
+    logger.info(f'Grouped {len(df)} → {len(grouped)} (using GSTIN + Invoice_Date + normalized invoice)')
     return grouped
 
-# ── detect duplicates with normalized invoice numbers and value check (FIXED) ──
+# ── detect duplicates with normalized invoice numbers and value check ─────────
 
 def detect_duplicate_invoices(df, source):
     """
