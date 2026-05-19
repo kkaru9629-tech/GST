@@ -77,12 +77,6 @@ def extract_numeric_core(inv: str) -> str:
     Extract the most relevant numeric sequence from invoice number.
     Ignores year-like numbers (1900-2100) and selects the longest remaining sequence.
     Returns as string with leading zeros removed via lstrip.
-    Examples:
-        V3L/003/2026-27  ->  '3'
-        INV-003-BRANCH-22 -> '3' (longest '003' after ignoring year)
-        SUN-INV/011      ->  '11'
-        052              ->  '52'
-        001              ->  '1'
     """
     if not inv:
         return ''
@@ -95,18 +89,16 @@ def extract_numeric_core(inv: str) -> str:
     for n in nums:
         try:
             v = int(n)
-            # Ignore year-like numbers (1900-2100)
             if 1900 <= v <= 2100:
                 continue
             filtered.append(n)
         except:
             pass
     
-    # FIX: choose longest sequence, not necessarily last
     if filtered:
         core = max(filtered, key=len)
     else:
-        core = max(nums, key=len)  # fallback to longest among all
+        core = max(nums, key=len)
     
     return core.lstrip('0') or '0'
 
@@ -375,16 +367,11 @@ def create_trade_name_mapping(gstr_df, books_df):
 # ── GROUPING (PRESERVE ORIGINAL INVOICE, ADD NORMALIZED COLUMN) ──────────────
 
 def group_invoices(df):
-    """
-    Group invoices using light normalization.
-    Preserves original Invoice_No, adds Normalized_Invoice_No for matching.
-    """
     if df.empty:
         return df
     
     df = df.copy()
     
-    # Create normalized version without overwriting original
     df['_normalized_invoice'] = df['Invoice_No'].apply(
         lambda x: light_normalize(_s(x))
     )
@@ -405,15 +392,14 @@ def group_invoices(df):
         'GSTIN': 'first',
         'Invoice_Date': 'first',
         'Trade_Name': lambda x: next((v for v in x if v and str(v).strip()), ''),
-        'Invoice_No': 'first',                # keep original invoice number
-        '_normalized_invoice': 'first'       # keep normalized for matching
+        'Invoice_No': 'first',
+        '_normalized_invoice': 'first'
     })
     
-    # Rename normalized column for clarity
     grouped['Normalized_Invoice_No'] = grouped['_normalized_invoice']
     grouped = grouped.drop(columns=['_group_key', '_normalized_invoice'])
     
-    logger.info(f'Grouped {len(df)} → {len(grouped)} (original Invoice_No preserved)')
+    logger.info(f'Grouped {len(df)} → {len(grouped)}')
     return grouped
 
 # ── DUPLICATE DETECTION (INCLUDES DATE) ──────────────────────────────────────
@@ -450,7 +436,6 @@ def level1_strict_match(g, b, tol):
     g = g.copy()
     b = b.copy()
 
-    # Level 1 uses exact original Invoice_No (no normalization)
     g['K'] = [_key(r['GSTIN'], r['Invoice_No'], normalize_date(r['Invoice_Date'])) for _, r in g.iterrows()]
     b['K'] = [_key(r['GSTIN'], r['Invoice_No'], normalize_date(r['Invoice_Date'])) for _, r in b.iterrows()]
 
@@ -481,16 +466,12 @@ def level1_strict_match(g, b, tol):
 
 
 def level2_normalized_match(g, b, tol):
-    """
-    LEVEL 2 — NORMALIZED MATCH (uses Normalized_Invoice_No column)
-    """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
 
     g = g.copy()
     b = b.copy()
 
-    # Use pre-computed Normalized_Invoice_No if available, otherwise compute on the fly
     if 'Normalized_Invoice_No' in g.columns:
         g['NK'] = g['Normalized_Invoice_No']
     else:
@@ -501,7 +482,6 @@ def level2_normalized_match(g, b, tol):
     else:
         b['NK'] = [light_normalize(_s(r['Invoice_No'])) for _, r in b.iterrows()]
 
-    # Create composite key with normalized date
     g['NK'] = [_key(r['GSTIN'], normalize_date(r['Invoice_Date']), r['NK']) for _, r in g.iterrows()]
     b['NK'] = [_key(r['GSTIN'], normalize_date(r['Invoice_Date']), r['NK']) for _, r in b.iterrows()]
 
@@ -546,28 +526,23 @@ def level2_normalized_match(g, b, tol):
     g_remaining = g[~g.index.isin(used_g)].drop(columns=['NK'], errors='ignore')
     b_remaining = b[~b.index.isin(used_b)].drop(columns=['NK'], errors='ignore')
 
-    logger.info(f'L2: {len(matched)} matched, {len(g_remaining)} GSTR rows to L3, {len(b_remaining)} Books rows to L3')
+    logger.info(f'L2: {len(matched)} matched')
     return matched, g_remaining, b_remaining, set()
 
 
 def level3_numeric_core_match(g, b, tol):
-    """
-    LEVEL 3 — NUMERIC CORE MATCH (uses longest meaningful sequence)
-    """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
 
     g = g.copy()
     b = b.copy()
 
-    # Use original Invoice_No for core extraction (still need original)
     g['CORE'] = g['Invoice_No'].apply(lambda x: extract_numeric_core(_s(x)))
     b['CORE'] = b['Invoice_No'].apply(lambda x: extract_numeric_core(_s(x)))
 
     g['CK'] = [_key(r['GSTIN'], normalize_date(r['Invoice_Date']), r['CORE']) for _, r in g.iterrows()]
     b['CK'] = [_key(r['GSTIN'], normalize_date(r['Invoice_Date']), r['CORE']) for _, r in b.iterrows()]
 
-    # Use CORE directly for validation
     g_valid = g[g['CORE'] != ''].copy()
     b_valid = b[b['CORE'] != ''].copy()
     g_no_key = g[g['CORE'] == ''].drop(columns=['CK', 'CORE'], errors='ignore')
