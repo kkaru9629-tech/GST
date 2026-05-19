@@ -1,8 +1,6 @@
 """
-GST Reconciliation Engine  v9.0 - CORRECTED ARCHITECTURE
-Fixed: Duplicate detection includes Date
-Fixed: Grouping uses LIGHT normalization only
-Fixed: Level 3 uses longest digit sequence
+GST Reconciliation Engine  v9.1 - DATE NORMALIZATION FIX ONLY
+Fixed: Date normalization in all matching level keys
 """
 
 import pandas as pd
@@ -59,7 +57,15 @@ def validate_gstin(g)->bool:
     if not g: return False
     return bool(GSTIN_PATTERN.match(str(g).strip().upper()))
 
-# ── NORMALIZATION FUNCTIONS (CORRECTED ARCHITECTURE) ─────────────────────────
+# ── DATE NORMALIZATION HELPER ─────────────────────────────────────────────────
+
+def normalize_date(dt):
+    """Normalize date to consistent YYYY-MM-DD string format"""
+    if pd.isna(dt):
+        return ''
+    return pd.to_datetime(dt).strftime('%Y-%m-%d')
+
+# ── NORMALIZATION FUNCTIONS ───────────────────────────────────────────────────
 
 def light_normalize(inv: str) -> str:
     """
@@ -381,7 +387,7 @@ def group_invoices(df):
     df['_group_key'] = df.apply(
         lambda r: _key(
             r['GSTIN'], 
-            r['Invoice_Date'],
+            normalize_date(r['Invoice_Date']),
             light_normalize(_s(r['Invoice_No']))
         ), axis=1
     )
@@ -419,10 +425,10 @@ def detect_duplicate_invoices(df, source):
     # Light normalization for duplicate detection
     dt['_norm_dup'] = dt['Invoice_No'].apply(lambda x: light_normalize(_s(x)))
     
-    # Convert date to string for duplicate detection
-    dt['_inv_date_str'] = pd.to_datetime(dt['Invoice_Date'], errors='coerce').dt.strftime('%Y-%m-%d').fillna('')
+    # Normalize date to string for duplicate detection
+    dt['_inv_date_str'] = dt['Invoice_Date'].apply(normalize_date)
     
-    # FIXED: Include date in duplicate detection
+    # Include date in duplicate detection
     mask = dt.duplicated(subset=['GSTIN', '_norm_dup', '_inv_date_str', 'Invoice_Value'], keep=False)
     dr = df[mask].copy()
     
@@ -439,18 +445,19 @@ def detect_duplicate_invoices(df, source):
     
     return dedup, dr, (pd.DataFrame(di) if di else pd.DataFrame())
 
-# ── 3-LEVEL MATCHING ──────────────────────────────────────────────────────────
+# ── 3-LEVEL MATCHING (WITH DATE NORMALIZATION) ────────────────────────────────
 
 def level1_strict_match(g, b, tol):
     """
     LEVEL 1 — STRICT MATCH
-    Key: GSTIN + exact Invoice_No + Invoice_Date
+    Key: GSTIN + exact Invoice_No + normalized Invoice_Date
     """
     g = g.copy()
     b = b.copy()
 
-    g['K'] = [_key(r['GSTIN'], r['Invoice_No'], r['Invoice_Date']) for _, r in g.iterrows()]
-    b['K'] = [_key(r['GSTIN'], r['Invoice_No'], r['Invoice_Date']) for _, r in b.iterrows()]
+    # FIXED: Use normalize_date() for consistent date formatting
+    g['K'] = [_key(r['GSTIN'], r['Invoice_No'], normalize_date(r['Invoice_Date'])) for _, r in g.iterrows()]
+    b['K'] = [_key(r['GSTIN'], r['Invoice_No'], normalize_date(r['Invoice_Date'])) for _, r in b.iterrows()]
 
     ks = set(g['K']) & set(b['K'])
     if not ks:
@@ -468,8 +475,8 @@ def level1_strict_match(g, b, tol):
     failed_bkeys = set()
     if not unmatched.empty:
         for _, row in unmatched.iterrows():
-            failed_gkeys.add(_key(row.get('GSTIN_2B'), row.get('Invoice_No_2B'), row.get('Invoice_Date_2B')))
-            failed_bkeys.add(_key(row.get('GSTIN_Books'), row.get('Invoice_No_Books'), row.get('Invoice_Date_Books')))
+            failed_gkeys.add(_key(row.get('GSTIN_2B'), row.get('Invoice_No_2B'), normalize_date(row.get('Invoice_Date_2B'))))
+            failed_bkeys.add(_key(row.get('GSTIN_Books'), row.get('Invoice_No_Books'), normalize_date(row.get('Invoice_Date_Books'))))
 
     g_remaining = g[~g['K'].isin(ks) | g['K'].isin(failed_gkeys)].drop(columns=['K'], errors='ignore')
     b_remaining = b[~b['K'].isin(ks) | b['K'].isin(failed_bkeys)].drop(columns=['K'], errors='ignore')
@@ -483,10 +490,10 @@ def level2_normalized_match(g, b, tol):
     LEVEL 2 — NORMALIZED MATCH (LIGHT NORMALIZATION)
     Conditions:
         - GSTIN same
-        - Invoice Date same
+        - Normalized Invoice Date same
         - Light normalized invoice number (special chars removed)
     
-    Key: GSTIN + Invoice_Date + light_normalized_invoice
+    Key: GSTIN + normalized_Invoice_Date + light_normalized_invoice
     Guard: TOTAL_TAX within tolerance
     
     CRITICAL: Does NOT filter or remove any rows. All unmatched rows
@@ -502,9 +509,9 @@ def level2_normalized_match(g, b, tol):
     g['NK'] = [light_normalize(_s(r['Invoice_No'])) for _, r in g.iterrows()]
     b['NK'] = [light_normalize(_s(r['Invoice_No'])) for _, r in b.iterrows()]
 
-    # Create composite key: GSTIN + Invoice_Date + normalized_invoice
-    g['NK'] = [_key(r['GSTIN'], r['Invoice_Date'], r['NK']) for _, r in g.iterrows()]
-    b['NK'] = [_key(r['GSTIN'], r['Invoice_Date'], r['NK']) for _, r in b.iterrows()]
+    # FIXED: Use normalize_date() for consistent date formatting
+    g['NK'] = [_key(r['GSTIN'], normalize_date(r['Invoice_Date']), r['NK']) for _, r in g.iterrows()]
+    b['NK'] = [_key(r['GSTIN'], normalize_date(r['Invoice_Date']), r['NK']) for _, r in b.iterrows()]
 
     # Find matching keys
     ks = set(g['NK']) & set(b['NK'])
@@ -534,13 +541,12 @@ def level2_normalized_match(g, b, tol):
     if not matched.empty:
         for _, row in matched.iterrows():
             gstin = _s(row.get('GSTIN_2B', row.get('GSTIN', '')))
-            inv_date = row.get('Invoice_Date_2B', row.get('Invoice_Date', ''))
+            inv_date = normalize_date(row.get('Invoice_Date_2B', row.get('Invoice_Date', '')))
             inv = _s(row.get('Invoice_No_2B', row.get('Invoice_No', '')))
             norm_inv = light_normalize(inv)
             matched_keys.add(_key(gstin, inv_date, norm_inv))
     
     # REMAINING: ALL rows that were NOT successfully matched
-    # This includes rows that never had a matching key AND rows that failed tax guard
     g_remaining = g[~g['NK'].isin(matched_keys)].drop(columns=['NK'], errors='ignore')
     b_remaining = b[~b['NK'].isin(matched_keys)].drop(columns=['NK'], errors='ignore')
 
@@ -553,10 +559,10 @@ def level3_numeric_core_match(g, b, tol):
     LEVEL 3 — NUMERIC CORE MATCH (LONGEST DIGIT SEQUENCE)
     Conditions:
         - GSTIN same
-        - Invoice Date same
+        - Normalized Invoice Date same
         - Longest numeric core (removes leading zeros)
     
-    Key: GSTIN + Invoice_Date + numeric_core
+    Key: GSTIN + normalized_Invoice_Date + numeric_core
     """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
@@ -564,9 +570,9 @@ def level3_numeric_core_match(g, b, tol):
     g = g.copy()
     b = b.copy()
 
-    # Extract longest numeric core for Level 3
-    g['CK'] = [_key(r['GSTIN'], r['Invoice_Date'], extract_longest_numeric_core(_s(r['Invoice_No']))) for _, r in g.iterrows()]
-    b['CK'] = [_key(r['GSTIN'], r['Invoice_Date'], extract_longest_numeric_core(_s(r['Invoice_No']))) for _, r in b.iterrows()]
+    # FIXED: Use normalize_date() for consistent date formatting
+    g['CK'] = [_key(r['GSTIN'], normalize_date(r['Invoice_Date']), extract_longest_numeric_core(_s(r['Invoice_No']))) for _, r in g.iterrows()]
+    b['CK'] = [_key(r['GSTIN'], normalize_date(r['Invoice_Date']), extract_longest_numeric_core(_s(r['Invoice_No']))) for _, r in b.iterrows()]
 
     # Filter rows with valid numeric keys
     g_valid = g[g['CK'] != '|'].copy()
