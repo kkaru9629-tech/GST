@@ -530,10 +530,6 @@ with col_left:
             <div class="summary-card-label">Difference</div>
             <div class="summary-card-value" style="color: {'#2e7d32' if s['ITC_Diff'] >= 0 else '#c62828'}">₹ {abs(s['ITC_Diff']):,.2f}</div>
         </div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">ITC at Risk</div>
-            <div class="summary-card-value" style="color: #c62828">₹ {s['ITC_at_Risk']:,.2f}</div>
-        </div>
         <div class="summary-card-total">
             <div class="summary-card-total-label">Match %</div>
             <div class="summary-card-total-value">{s['Match_%']:.2f}%</div>
@@ -781,7 +777,7 @@ if not r["no_itc"].empty:
         st.markdown("## Zero ITC Invoices")
         st.dataframe(no_itc_df, use_container_width=True, hide_index=True)
 
-# =================== EXCEL EXPORT WITH PROFESSIONAL FORMATTING (MATCHING OLD SUMMARY STYLE) ===================
+# =================== EXCEL EXPORT WITH PROFESSIONAL FORMATTING ===================
 
 def create_supplier_wise_summary(books_raw, gstr_raw, trade_name_map):
     """Create supplier-wise ITC summary matching old summary style"""
@@ -836,7 +832,7 @@ def create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r):
     all_months = [m for m in all_months if m and m not in ('', 'NaT')]
     
     for month in sorted(all_months):
-        # SAFELY convert month to display name - FIXED
+        # SAFELY convert month to display name
         try:
             if isinstance(month, str) and len(month) >= 7:
                 month_name = pd.to_datetime(month + '-01', format='%Y-%m-%d').strftime('%b-%Y')
@@ -891,7 +887,10 @@ def create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r):
             for _, row in matched.iterrows():
                 inv_date = row.get('Invoice_Date_2B') or row.get('Invoice_Date_Books')
                 if pd.notna(inv_date):
-                    inv_month = pd.to_datetime(inv_date).to_period('M').astype(str)
+                    try:
+                        inv_month = str(pd.to_datetime(inv_date).to_period('M'))
+                    except Exception:
+                        inv_month = ''
                     if inv_month == month:
                         gstin = row.get('GSTIN_2B') or row.get('GSTIN_Books', '')
                         itc_books = float(row.get('TOTAL_TAX_Books', 0) or 0)
@@ -1040,7 +1039,7 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
     
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         
-        # ========== SUMMARY SHEET (Matching Old Summary Style) ==========
+        # ========== SUMMARY SHEET (ITC at Risk removed) ==========
         summary_data = [
             ['Reconciliation Summary', ''],
             ['', ''],
@@ -1048,7 +1047,6 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
             ['ITC - Books', r['summary']['ITC_Books']],
             ['ITC - GSTR-2B', r['summary']['ITC_GSTR']],
             ['Difference', abs(r['summary']['ITC_Diff'])],
-            ['ITC at Risk', r['summary']['ITC_at_Risk']],
             ['', ''],
             ['Match %', r['summary']['Match_%']],
             ['', ''],
@@ -1062,7 +1060,6 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
         summary_df = pd.DataFrame(summary_data)
         summary_df.to_excel(writer, sheet_name='Summary', index=False, header=False)
         
-        # Apply formatting to Summary sheet
         workbook = writer.book
         ws_summary = writer.sheets['Summary']
         
@@ -1071,15 +1068,14 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
         integer_format = workbook.add_format({'num_format': '#,##0', 'border': 1, 'align': 'right', 'font_name': 'Calibri', 'font_size': 10})
         text_format = workbook.add_format({'border': 1, 'align': 'left', 'font_name': 'Calibri', 'font_size': 10})
         
-        # Write headers
         ws_summary.write(2, 0, 'Particulars', header_format)
         ws_summary.write(2, 1, 'Value', header_format)
         
         for row_idx in range(3, len(summary_data)):
             val = summary_data[row_idx][1]
-            if row_idx in [3,4,5,6,8]:  # ITC rows and Match %
+            if row_idx in [3,4,5,7]:  # ITC rows and Match %
                 ws_summary.write(row_idx, 1, float(val) if isinstance(val, (int, float)) else 0, number_format)
-            elif row_idx in [10,11,12,13,14,15]:  # Count rows
+            elif row_idx in [9,10,11,12,13,14]:  # Count rows
                 ws_summary.write(row_idx, 1, int(val) if isinstance(val, (int, float)) else 0, integer_format)
             else:
                 ws_summary.write(row_idx, 1, str(val) if val else '', text_format)
@@ -1095,24 +1091,21 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
                 lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
             )
             ms_display.to_excel(writer, sheet_name='Month-wise Summary', index=False)
-            apply_professional_formatting(writer, 'Month-wise Summary', ms_display, list(ms_display.columns), 
-                                         include_title=False)
+            apply_professional_formatting(writer, 'Month-wise Summary', ms_display, list(ms_display.columns), include_title=False)
         
         # ========== BOOKS SHEET ==========
         if not books_raw.empty:
             books_export = books_raw.copy()
             books_export['Invoice_Date'] = pd.to_datetime(books_export['Invoice_Date'], errors='coerce')
             books_export.to_excel(writer, sheet_name='Books', index=False)
-            apply_professional_formatting(writer, 'Books', books_export, list(books_export.columns), 
-                                         include_title=False)
+            apply_professional_formatting(writer, 'Books', books_export, list(books_export.columns), include_title=False)
         
         # ========== GSTR-2B SHEET ==========
         if not gstr_raw.empty:
             gstr_export = gstr_raw.copy()
             gstr_export['Invoice_Date'] = pd.to_datetime(gstr_export['Invoice_Date'], errors='coerce')
             gstr_export.to_excel(writer, sheet_name='GSTR-2B', index=False)
-            apply_professional_formatting(writer, 'GSTR-2B', gstr_export, list(gstr_export.columns), 
-                                         include_title=False)
+            apply_professional_formatting(writer, 'GSTR-2B', gstr_export, list(gstr_export.columns), include_title=False)
         
         # ========== MISSING IN 2B SHEET ==========
         if not r.get("missing_2b", pd.DataFrame()).empty:
@@ -1122,8 +1115,7 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
             m2b_export = m2b[["GSTIN", "Supplier", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]]
             m2b_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "TOTAL_TAX"]
             m2b_export.to_excel(writer, sheet_name='Missing in 2B', index=False)
-            apply_professional_formatting(writer, 'Missing in 2B', m2b_export, list(m2b_export.columns), 
-                                         include_title=False)
+            apply_professional_formatting(writer, 'Missing in 2B', m2b_export, list(m2b_export.columns), include_title=False)
         
         # ========== MISSING IN BOOKS SHEET ==========
         if not r.get("missing_books", pd.DataFrame()).empty:
@@ -1133,31 +1125,27 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
             mb_export = mb[["GSTIN", "Supplier", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]]
             mb_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "TOTAL_TAX"]
             mb_export.to_excel(writer, sheet_name='Missing in Books', index=False)
-            apply_professional_formatting(writer, 'Missing in Books', mb_export, list(mb_export.columns), 
-                                         include_title=False)
+            apply_professional_formatting(writer, 'Missing in Books', mb_export, list(mb_export.columns), include_title=False)
         
         # ========== SUPPLIER WISE ITC SUMMARY ==========
         supplier_summary = create_supplier_wise_summary(books_raw, gstr_raw, trade_name_map)
         if not supplier_summary.empty:
             supplier_summary.to_excel(writer, sheet_name='Supplier Wise ITC Summary', index=False)
-            apply_professional_formatting(writer, 'Supplier Wise ITC Summary', supplier_summary, 
-                                         list(supplier_summary.columns), include_title=False)
+            apply_professional_formatting(writer, 'Supplier Wise ITC Summary', supplier_summary, list(supplier_summary.columns), include_title=False)
         
         # ========== SUPPLIER DRILL DOWN ==========
         supplier_drill = create_supplier_drill_down(r, trade_name_map, detail_df)
         if not supplier_drill.empty:
             supplier_drill.to_excel(writer, sheet_name='Supplier Drill Down', index=False)
-            apply_professional_formatting(writer, 'Supplier Drill Down', supplier_drill, 
-                                         list(supplier_drill.columns), include_title=False)
+            apply_professional_formatting(writer, 'Supplier Drill Down', supplier_drill, list(supplier_drill.columns), include_title=False)
         
         # ========== MONTHLY SHEETS ==========
         monthly_sheets = create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r)
         for month_name, month_df in monthly_sheets.items():
             if not month_df.empty and len(month_df) > 0:
-                sheet_name = month_name[:31]  # Excel sheet name max 31 chars
+                sheet_name = month_name[:31]
                 month_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                apply_professional_formatting(writer, sheet_name, month_df, 
-                                             list(month_df.columns), include_title=False)
+                apply_professional_formatting(writer, sheet_name, month_df, list(month_df.columns), include_title=False)
         
         # ========== NO ITC SHEET ==========
         if not r.get("no_itc", pd.DataFrame()).empty:
@@ -1168,16 +1156,14 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
             ni_export = ni_export[ni_export["Invoice Value"].astype(float) > 0]
             if not ni_export.empty:
                 ni_export.to_excel(writer, sheet_name='NO ITC', index=False)
-                apply_professional_formatting(writer, 'NO ITC', ni_export, list(ni_export.columns), 
-                                             include_title=False)
+                apply_professional_formatting(writer, 'NO ITC', ni_export, list(ni_export.columns), include_title=False)
         
         # ========== TAX DIFFERENCES SHEET ==========
         if not r.get("tax_diff", pd.DataFrame()).empty:
             td = r["tax_diff"].copy()
             td_export = td[[c for c in td.columns if c not in ['TAX_MATCH']]]
             td_export.to_excel(writer, sheet_name='Tax Differences', index=False)
-            apply_professional_formatting(writer, 'Tax Differences', td_export, list(td_export.columns), 
-                                         include_title=False)
+            apply_professional_formatting(writer, 'Tax Differences', td_export, list(td_export.columns), include_title=False)
         
         # ========== DATA ISSUES SHEET ==========
         all_issues_local = r["issues"].copy() if not r["issues"].empty else pd.DataFrame()
@@ -1189,8 +1175,7 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
             if "Invoice_Date" in issues_export.columns:
                 issues_export["Invoice_Date"] = pd.to_datetime(issues_export["Invoice_Date"], errors='coerce')
             issues_export.to_excel(writer, sheet_name='Data Issues', index=False)
-            apply_professional_formatting(writer, 'Data Issues', issues_export, list(issues_export.columns), 
-                                         include_title=False)
+            apply_professional_formatting(writer, 'Data Issues', issues_export, list(issues_export.columns), include_title=False)
     
     output.seek(0)
     return output.getvalue()
