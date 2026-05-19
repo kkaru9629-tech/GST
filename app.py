@@ -1,6 +1,6 @@
 """
 GST Reconciliation App
-Version: 11.1 — EXACT MATCH to Old Summary Workbook Style
+Version: 12.0 — EXACT MATCH to Old Summary Workbook Structure
 """
 
 import streamlit as st
@@ -666,27 +666,27 @@ if not r["no_itc"].empty:
 
 # =================== EXCEL EXPORT - EXACT MATCH TO OLD WORKBOOK ===================
 
-def create_old_workbook_style_summary(writer, r):
-    """Create Summary sheet EXACTLY matching old workbook style"""
+def create_summary_sheet_exact_match(writer, r):
+    """Create Summary sheet EXACTLY matching old workbook (Row 0: Title, Row 1: header, Row 2+: data)"""
     workbook = writer.book
     worksheet = workbook.add_worksheet('Summary')
     
-    # Use Aptos Narrow font
+    # Define formats - Aptos Narrow, row height 18
     title_format = workbook.add_format({
         'bold': True,
-        'font_size': 14,
+        'font_size': 12,
         'font_name': 'Aptos Narrow',
         'align': 'left',
         'valign': 'vcenter'
     })
     
-    section_format = workbook.add_format({
+    header_format = workbook.add_format({
         'bold': True,
-        'font_size': 11,
+        'font_size': 10,
         'font_name': 'Aptos Narrow',
         'align': 'left',
         'valign': 'vcenter',
-        'bottom': 1
+        'bg_color': '#F0F0F0'
     })
     
     label_format = workbook.add_format({
@@ -715,91 +715,73 @@ def create_old_workbook_style_summary(writer, r):
         'num_format': '#,##0'
     })
     
-    total_label_format = workbook.add_format({
-        'bold': True,
-        'font_size': 10,
-        'font_name': 'Aptos Narrow',
-        'align': 'left',
-        'valign': 'vcenter',
-        'top': 1
-    })
-    
-    total_value_format = workbook.add_format({
-        'bold': True,
-        'font_size': 10,
-        'font_name': 'Aptos Narrow',
-        'align': 'right',
-        'valign': 'vcenter',
-        'num_format': '#,##0.00',
-        'top': 1
-    })
-    
-    # Set row height to 18
     worksheet.set_default_row(18)
     
-    # Title at row 0
-    worksheet.write(0, 0, 'GST RECONCILIATION REPORT', title_format)
-    worksheet.write(1, 0, f'Generated on: {datetime.now().strftime("%d-%b-%Y %H:%M")}', label_format)
+    # Row 0: Title
+    worksheet.write(0, 0, 'Reconciliation Summary', title_format)
     
-    row = 3
+    # Row 1: Headers
+    worksheet.write(1, 0, 'Particulars', header_format)
+    worksheet.write(1, 1, 'Value', header_format)
     
-    # ITC Section
-    worksheet.write(row, 0, 'ITC SUMMARY', section_format)
-    row += 2
+    # Row 2: ITC - Books
+    worksheet.write(2, 0, 'ITC - Books', label_format)
+    worksheet.write(2, 1, r['summary']['ITC_Books'], value_format)
     
-    worksheet.write(row, 0, 'ITC - Books', label_format)
-    worksheet.write(row, 1, r['summary']['ITC_Books'], value_format)
-    row += 1
+    # Row 3: ITC - GSTR-2B
+    worksheet.write(3, 0, 'ITC - GSTR-2B', label_format)
+    worksheet.write(3, 1, r['summary']['ITC_GSTR'], value_format)
     
-    worksheet.write(row, 0, 'ITC - GSTR-2B', label_format)
-    worksheet.write(row, 1, r['summary']['ITC_GSTR'], value_format)
-    row += 1
+    # Row 4: Difference
+    worksheet.write(4, 0, 'Difference', label_format)
+    worksheet.write(4, 1, r['summary']['ITC_Diff'], value_format)
     
-    worksheet.write(row, 0, 'Difference', label_format)
-    worksheet.write(row, 1, r['summary']['ITC_Diff'], value_format)
-    row += 2
+    # Row 5: ITC at Risk
+    itc_at_risk = r['summary'].get('ITC_at_Risk', 0)
+    worksheet.write(5, 0, 'ITC at Risk', label_format)
+    worksheet.write(5, 1, itc_at_risk, value_format)
     
-    worksheet.write(row, 0, 'Match %', total_label_format)
-    worksheet.write(row, 1, r['summary']['Match_%'], total_value_format)
-    row += 3
+    # Row 6: Match %
+    worksheet.write(6, 0, 'Match %', label_format)
+    worksheet.write(6, 1, r['summary']['Match_%'], value_format)
     
-    # Invoice Counts Section
-    worksheet.write(row, 0, 'INVOICE COUNTS', section_format)
-    row += 2
+    # Blank row
+    worksheet.write(7, 0, '', label_format)
     
-    worksheet.write(row, 0, 'Total Books Invoices', label_format)
-    worksheet.write(row, 1, r['summary']['Total_Books'], value_int_format)
-    row += 1
+    # Row 8: Total Books
+    worksheet.write(8, 0, 'Total Books', label_format)
+    worksheet.write(8, 1, r['summary']['Total_Books'], value_int_format)
     
-    worksheet.write(row, 0, 'Total GSTR-2B Invoices', label_format)
-    worksheet.write(row, 1, r['summary']['Total_GSTR'], value_int_format)
-    row += 2
+    # Row 9: Total GSTR
+    worksheet.write(9, 0, 'Total GSTR', label_format)
+    worksheet.write(9, 1, r['summary']['Total_GSTR'], value_int_format)
     
-    worksheet.write(row, 0, 'Matched', label_format)
-    worksheet.write(row, 1, r['summary']['Matched'], value_int_format)
-    row += 1
+    # Row 10: Matched
+    worksheet.write(10, 0, 'Matched', label_format)
+    worksheet.write(10, 1, r['summary']['Matched'], value_int_format)
     
-    worksheet.write(row, 0, 'Tax Difference', label_format)
-    worksheet.write(row, 1, r['summary']['Tax_Diff'], value_int_format)
-    row += 1
+    # Row 11: Tax Diff
+    worksheet.write(11, 0, 'Tax Diff', label_format)
+    worksheet.write(11, 1, r['summary']['Tax_Diff'], value_int_format)
     
-    worksheet.write(row, 0, 'Missing in 2B', label_format)
-    worksheet.write(row, 1, r['summary']['Missing_2B'], value_int_format)
-    row += 1
+    # Row 12: Missing 2B
+    worksheet.write(12, 0, 'Missing 2B', label_format)
+    worksheet.write(12, 1, r['summary']['Missing_2B'], value_int_format)
     
-    worksheet.write(row, 0, 'Missing in Books', label_format)
-    worksheet.write(row, 1, r['summary']['Missing_Books'], value_int_format)
+    # Row 13: Missing Books
+    worksheet.write(13, 0, 'Missing Books', label_format)
+    worksheet.write(13, 1, r['summary']['Missing_Books'], value_int_format)
     
     # Set column widths
     worksheet.set_column(0, 0, 22)
     worksheet.set_column(1, 1, 18)
     
-    # Freeze pane at A3
+    # Freeze pane at A3 (row 3, col 0)
     worksheet.freeze_panes(3, 0)
 
 
-def create_old_workbook_style_monthwise(writer, month_summary):
-    """Create Month-wise Summary sheet EXACTLY matching old workbook style"""
+def create_monthwise_summary_exact_match(writer, month_summary):
+    """Create Month-wise Summary sheet EXACTLY matching old workbook"""
     if month_summary.empty:
         return
     
@@ -850,56 +832,55 @@ def create_old_workbook_style_monthwise(writer, month_summary):
         'font_name': 'Aptos Narrow'
     })
     
-    # Set row height to 18
     worksheet.set_default_row(18)
     
-    # Title at row 0
+    # Row 0: Title
     worksheet.write(0, 0, 'Month-wise ITC Summary', title_format)
     
-    # Prepare display data
+    # Prepare display data with formatted month names (Mar-2026, Apr-2026 format)
     display_df = month_summary.copy()
     display_df['Month'] = display_df['Month'].apply(
         lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%b-%Y") if pd.notna(m) and m not in ("", "NaT") else m
     )
     
-    # Headers starting at row 3 (old workbook style)
+    # Row 2: Headers (old workbook has headers at row 2)
     headers = list(display_df.columns)
     for col_idx, header in enumerate(headers):
-        worksheet.write(3, col_idx, header, header_format)
+        worksheet.write(2, col_idx, header, header_format)
     
-    # Data starting at row 4
+    # Data starting at row 3
     for row_idx, (_, row) in enumerate(display_df.iterrows()):
         for col_idx, header in enumerate(headers):
             val = row[header]
             col_lower = header.lower()
             
             if 'itc' in col_lower or 'difference' in col_lower:
-                worksheet.write(4 + row_idx, col_idx, float(val) if pd.notna(val) else 0, money_format)
+                worksheet.write(3 + row_idx, col_idx, float(val) if pd.notna(val) else 0, money_format)
             elif 'missing' in col_lower or 'matched' in col_lower:
-                worksheet.write(4 + row_idx, col_idx, int(val) if pd.notna(val) else 0, int_format)
+                worksheet.write(3 + row_idx, col_idx, int(val) if pd.notna(val) else 0, int_format)
             else:
-                worksheet.write(4 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
+                worksheet.write(3 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
     
-    # Auto-fit columns with manual touch
+    # Auto-fit columns
     for col_idx, header in enumerate(headers):
         max_len = len(header)
         if not display_df.empty:
             for _, row in display_df.iterrows():
                 val = str(row[header]) if pd.notna(row[header]) else ""
-                max_len = max(max_len, min(len(val), 30))
+                max_len = max(max_len, min(len(val), 25))
         worksheet.set_column(col_idx, col_idx, max_len + 2)
     
     # Freeze pane at A3
     worksheet.freeze_panes(3, 0)
 
 
-def create_old_workbook_style_data_sheet(writer, sheet_name, df, title=None):
-    """Create data sheet EXACTLY matching old workbook style"""
-    if df.empty:
+def create_books_sheet_exact_match(writer, books_raw):
+    """Create Books sheet EXACTLY matching old workbook"""
+    if books_raw.empty:
         return
     
     workbook = writer.book
-    worksheet = workbook.add_worksheet(sheet_name[:31])
+    worksheet = workbook.add_worksheet('Books')
     
     title_format = workbook.add_format({
         'bold': True,
@@ -928,8 +909,99 @@ def create_old_workbook_style_data_sheet(writer, sheet_name, df, title=None):
         'font_name': 'Aptos Narrow'
     })
     
-    int_format = workbook.add_format({
-        'num_format': '#,##0',
+    date_format = workbook.add_format({
+        'num_format': 'dd-mmm-yyyy',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    worksheet.set_default_row(18)
+    
+    # Row 0: Title
+    worksheet.write(0, 0, 'Books Data', title_format)
+    
+    # Prepare data - ensure date format
+    books_export = books_raw.copy()
+    if 'Invoice_Date' in books_export.columns:
+        books_export['Invoice_Date'] = pd.to_datetime(books_export['Invoice_Date'], errors='coerce')
+    
+    # Row 2: Headers
+    headers = list(books_export.columns)
+    for col_idx, header in enumerate(headers):
+        worksheet.write(2, col_idx, header, header_format)
+    
+    # Data starting at row 3
+    for row_idx, (_, row) in enumerate(books_export.iterrows()):
+        for col_idx, header in enumerate(headers):
+            val = row[header]
+            col_lower = header.lower()
+            
+            if any(term in col_lower for term in ['taxable', 'value', 'cgst', 'sgst', 'igst', 'cess', 'total_tax', 'invoice_value']):
+                worksheet.write(3 + row_idx, col_idx, float(val) if pd.notna(val) else 0, money_format)
+            elif 'date' in col_lower:
+                if pd.notna(val):
+                    try:
+                        dt = pd.to_datetime(val)
+                        worksheet.write_datetime(3 + row_idx, col_idx, dt.to_pydatetime(), date_format)
+                    except:
+                        worksheet.write(3 + row_idx, col_idx, str(val), text_format)
+                else:
+                    worksheet.write(3 + row_idx, col_idx, "", text_format)
+            else:
+                worksheet.write(3 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
+    
+    # Set column widths
+    for col_idx, header in enumerate(headers):
+        max_len = len(header)
+        if not books_export.empty:
+            for row_idx in range(min(100, len(books_export))):
+                val = str(books_export.iloc[row_idx][header]) if pd.notna(books_export.iloc[row_idx][header]) else ""
+                max_len = max(max_len, min(len(val), 25))
+        worksheet.set_column(col_idx, col_idx, max_len + 2)
+    
+    # Freeze pane at A3
+    worksheet.freeze_panes(3, 0)
+
+
+def create_gstr_sheet_exact_match(writer, gstr_raw):
+    """Create GSTR-2B sheet EXACTLY matching old workbook"""
+    if gstr_raw.empty:
+        return
+    
+    workbook = writer.book
+    worksheet = workbook.add_worksheet('GSTR-2B')
+    
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 12,
+        'font_name': 'Aptos Narrow',
+        'align': 'left'
+    })
+    
+    header_format = workbook.add_format({
+        'bold': True,
+        'font_color': '#FFFFFF',
+        'bg_color': '#1F4E78',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    money_format = workbook.add_format({
+        'num_format': '#,##0.00',
         'border': 1,
         'align': 'right',
         'valign': 'vcenter',
@@ -946,7 +1018,100 @@ def create_old_workbook_style_data_sheet(writer, sheet_name, df, title=None):
         'font_name': 'Aptos Narrow'
     })
     
-    center_format = workbook.add_format({
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    worksheet.set_default_row(18)
+    
+    # Row 0: Title
+    worksheet.write(0, 0, 'GSTR-2B Data', title_format)
+    
+    # Prepare data
+    gstr_export = gstr_raw.copy()
+    if 'Invoice_Date' in gstr_export.columns:
+        gstr_export['Invoice_Date'] = pd.to_datetime(gstr_export['Invoice_Date'], errors='coerce')
+    
+    # Row 2: Headers
+    headers = list(gstr_export.columns)
+    for col_idx, header in enumerate(headers):
+        worksheet.write(2, col_idx, header, header_format)
+    
+    # Data starting at row 3
+    for row_idx, (_, row) in enumerate(gstr_export.iterrows()):
+        for col_idx, header in enumerate(headers):
+            val = row[header]
+            col_lower = header.lower()
+            
+            if any(term in col_lower for term in ['taxable', 'value', 'cgst', 'sgst', 'igst', 'cess', 'total_tax', 'invoice_value']):
+                worksheet.write(3 + row_idx, col_idx, float(val) if pd.notna(val) else 0, money_format)
+            elif 'date' in col_lower:
+                if pd.notna(val):
+                    try:
+                        dt = pd.to_datetime(val)
+                        worksheet.write_datetime(3 + row_idx, col_idx, dt.to_pydatetime(), date_format)
+                    except:
+                        worksheet.write(3 + row_idx, col_idx, str(val), text_format)
+                else:
+                    worksheet.write(3 + row_idx, col_idx, "", text_format)
+            else:
+                worksheet.write(3 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
+    
+    # Set column widths
+    for col_idx, header in enumerate(headers):
+        max_len = len(header)
+        if not gstr_export.empty:
+            for row_idx in range(min(100, len(gstr_export))):
+                val = str(gstr_export.iloc[row_idx][header]) if pd.notna(gstr_export.iloc[row_idx][header]) else ""
+                max_len = max(max_len, min(len(val), 25))
+        worksheet.set_column(col_idx, col_idx, max_len + 2)
+    
+    # Freeze pane at A3
+    worksheet.freeze_panes(3, 0)
+
+
+def create_missing_in_2b_sheet_exact_match(writer, r, trade_name_map):
+    """Create Missing in 2B sheet EXACTLY matching old workbook"""
+    missing_2b = r.get('missing_2b', pd.DataFrame())
+    if missing_2b.empty:
+        return
+    
+    workbook = writer.book
+    worksheet = workbook.add_worksheet('Missing in 2B')
+    
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 12,
+        'font_name': 'Aptos Narrow',
+        'align': 'left'
+    })
+    
+    header_format = workbook.add_format({
+        'bold': True,
+        'font_color': '#FFFFFF',
+        'bg_color': '#1F4E78',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    money_format = workbook.add_format({
+        'num_format': '#,##0.00',
+        'border': 1,
+        'align': 'right',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    date_format = workbook.add_format({
+        'num_format': 'dd-mmm-yyyy',
         'border': 1,
         'align': 'center',
         'valign': 'vcenter',
@@ -962,57 +1127,256 @@ def create_old_workbook_style_data_sheet(writer, sheet_name, df, title=None):
         'font_name': 'Aptos Narrow'
     })
     
-    # Set row height to 18
     worksheet.set_default_row(18)
     
-    # Title at row 0
-    if title:
-        worksheet.write(0, 0, title, title_format)
+    # Row 0: Title
+    worksheet.write(0, 0, 'Missing in 2B', title_format)
     
-    # Headers starting at row 3 (old workbook style)
-    headers = list(df.columns)
+    # Prepare data
+    m2b = missing_2b.copy()
+    if 'Invoice_Date' in m2b.columns:
+        m2b['Invoice_Date'] = pd.to_datetime(m2b['Invoice_Date'], errors='coerce')
+    m2b['Supplier'] = m2b['GSTIN'].map(trade_name_map).fillna(m2b.get('Trade_Name', ''))
+    
+    # Row 2: Headers
+    headers = ['GSTIN', 'Trade_Name', 'Invoice_No', 'Invoice_Date', 'Taxable_Value', 'TOTAL_TAX']
+    header_labels = ['GSTIN', 'Trade_Name', 'Invoice_No', 'Invoice_Date', 'Taxable_Value', 'TOTAL_TAX']
+    
     for col_idx, header in enumerate(headers):
-        worksheet.write(3, col_idx, header, header_format)
+        worksheet.write(2, col_idx, header_labels[col_idx], header_format)
     
-    # Data starting at row 4
-    for row_idx, (_, row) in enumerate(df.iterrows()):
-        for col_idx, header in enumerate(headers):
-            val = row[header]
-            col_lower = header.lower()
-            
-            if any(term in col_lower for term in ['itc', 'difference', 'taxable', 'value', 'amount', 'cgst', 'sgst', 'igst', 'cess']):
-                worksheet.write(4 + row_idx, col_idx, float(val) if pd.notna(val) else 0, money_format)
-            elif any(term in col_lower for term in ['count', 'matched', 'missing']):
-                worksheet.write(4 + row_idx, col_idx, int(val) if pd.notna(val) else 0, int_format)
-            elif 'date' in col_lower:
-                if pd.notna(val):
-                    try:
-                        dt = pd.to_datetime(val)
-                        worksheet.write_datetime(4 + row_idx, col_idx, dt.to_pydatetime(), date_format)
-                    except:
-                        worksheet.write(4 + row_idx, col_idx, str(val), text_format)
-                else:
-                    worksheet.write(4 + row_idx, col_idx, "", text_format)
-            elif header in ['Remarks', 'Action Required', 'Status']:
-                worksheet.write(4 + row_idx, col_idx, str(val) if pd.notna(val) else "", center_format)
-            else:
-                worksheet.write(4 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
+    # Data starting at row 3
+    for row_idx, (_, row) in enumerate(m2b.iterrows()):
+        worksheet.write(3 + row_idx, 0, str(row.get('GSTIN', '')), text_format)
+        worksheet.write(3 + row_idx, 1, str(row.get('Supplier', '')), text_format)
+        worksheet.write(3 + row_idx, 2, str(row.get('Invoice_No', '')), text_format)
+        
+        if pd.notna(row.get('Invoice_Date')):
+            try:
+                dt = pd.to_datetime(row['Invoice_Date'])
+                worksheet.write_datetime(3 + row_idx, 3, dt.to_pydatetime(), date_format)
+            except:
+                worksheet.write(3 + row_idx, 3, str(row.get('Invoice_Date', '')), text_format)
+        else:
+            worksheet.write(3 + row_idx, 3, "", text_format)
+        
+        worksheet.write(3 + row_idx, 4, float(row.get('Taxable_Value', 0)), money_format)
+        worksheet.write(3 + row_idx, 5, float(row.get('TOTAL_TAX', 0)), money_format)
     
-    # Auto-fit columns
-    for col_idx, header in enumerate(headers):
-        max_len = len(header)
-        if not df.empty:
-            for row_idx in range(min(100, len(df))):
-                val = str(df.iloc[row_idx][header]) if pd.notna(df.iloc[row_idx][header]) else ""
-                max_len = max(max_len, min(len(val), 35))
-        worksheet.set_column(col_idx, col_idx, max_len + 2)
+    # Set column widths
+    worksheet.set_column(0, 0, 18)
+    worksheet.set_column(1, 1, 35)
+    worksheet.set_column(2, 2, 20)
+    worksheet.set_column(3, 3, 12)
+    worksheet.set_column(4, 4, 15)
+    worksheet.set_column(5, 5, 12)
     
     # Freeze pane at A3
     worksheet.freeze_panes(3, 0)
 
 
-def create_supplier_drill_down_sheet(writer, detail_df, r, trade_name_map):
-    """Create Supplier Drill Down sheet - critical for old workbook structure"""
+def create_missing_in_books_sheet_exact_match(writer, r, trade_name_map):
+    """Create Missing in Books sheet EXACTLY matching old workbook"""
+    missing_books = r.get('missing_books', pd.DataFrame())
+    if missing_books.empty:
+        return
+    
+    workbook = writer.book
+    worksheet = workbook.add_worksheet('Missing in Books')
+    
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 12,
+        'font_name': 'Aptos Narrow',
+        'align': 'left'
+    })
+    
+    header_format = workbook.add_format({
+        'bold': True,
+        'font_color': '#FFFFFF',
+        'bg_color': '#1F4E78',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    money_format = workbook.add_format({
+        'num_format': '#,##0.00',
+        'border': 1,
+        'align': 'right',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    date_format = workbook.add_format({
+        'num_format': 'dd-mmm-yyyy',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    worksheet.set_default_row(18)
+    
+    # Row 0: Title
+    worksheet.write(0, 0, 'Missing in Books', title_format)
+    
+    # Prepare data
+    mb = missing_books.copy()
+    if 'Invoice_Date' in mb.columns:
+        mb['Invoice_Date'] = pd.to_datetime(mb['Invoice_Date'], errors='coerce')
+    mb['Supplier'] = mb['GSTIN'].map(trade_name_map).fillna(mb.get('Trade_Name', ''))
+    
+    # Row 2: Headers
+    headers = ['GSTIN', 'Trade_Name', 'Invoice_No', 'Invoice_Date', 'Taxable_Value', 'TOTAL_TAX']
+    
+    for col_idx, header in enumerate(headers):
+        worksheet.write(2, col_idx, header, header_format)
+    
+    # Data starting at row 3
+    for row_idx, (_, row) in enumerate(mb.iterrows()):
+        worksheet.write(3 + row_idx, 0, str(row.get('GSTIN', '')), text_format)
+        worksheet.write(3 + row_idx, 1, str(row.get('Supplier', '')), text_format)
+        worksheet.write(3 + row_idx, 2, str(row.get('Invoice_No', '')), text_format)
+        
+        if pd.notna(row.get('Invoice_Date')):
+            try:
+                dt = pd.to_datetime(row['Invoice_Date'])
+                worksheet.write_datetime(3 + row_idx, 3, dt.to_pydatetime(), date_format)
+            except:
+                worksheet.write(3 + row_idx, 3, str(row.get('Invoice_Date', '')), text_format)
+        else:
+            worksheet.write(3 + row_idx, 3, "", text_format)
+        
+        worksheet.write(3 + row_idx, 4, float(row.get('Taxable_Value', 0)), money_format)
+        worksheet.write(3 + row_idx, 5, float(row.get('TOTAL_TAX', 0)), money_format)
+    
+    # Set column widths
+    worksheet.set_column(0, 0, 18)
+    worksheet.set_column(1, 1, 35)
+    worksheet.set_column(2, 2, 20)
+    worksheet.set_column(3, 3, 12)
+    worksheet.set_column(4, 4, 15)
+    worksheet.set_column(5, 5, 12)
+    
+    # Freeze pane at A3
+    worksheet.freeze_panes(3, 0)
+
+
+def create_supplier_wise_itc_summary_exact_match(writer, r, trade_name_map):
+    """Create Supplier Wise ITC Summary sheet EXACTLY matching old workbook"""
+    books_raw = r.get('books_raw', pd.DataFrame())
+    gstr_raw = r.get('gstr_raw', pd.DataFrame())
+    
+    suppliers = set()
+    if not books_raw.empty:
+        suppliers.update(books_raw['GSTIN'].unique())
+    if not gstr_raw.empty:
+        suppliers.update(gstr_raw['GSTIN'].unique())
+    
+    rows = []
+    for gstin in suppliers:
+        supplier_name = trade_name_map.get(gstin, '')
+        books_itc = books_raw[books_raw['GSTIN'] == gstin]['TOTAL_TAX'].sum() if not books_raw.empty else 0
+        gstr_itc = gstr_raw[gstr_raw['GSTIN'] == gstin]['TOTAL_TAX'].sum() if not gstr_raw.empty else 0
+        diff = gstr_itc - books_itc
+        
+        rows.append({
+            'GSTIN': gstin,
+            'Supplier': supplier_name,
+            'ITC as per Books': round(float(books_itc), 2),
+            'ITC as per 2B': round(float(gstr_itc), 2),
+            'ITC Difference': round(float(diff), 2),
+        })
+    
+    if not rows:
+        return
+    
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values('ITC as per 2B', ascending=False)
+    
+    workbook = writer.book
+    worksheet = workbook.add_worksheet('Supplier Wise ITC Summary')
+    
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 12,
+        'font_name': 'Aptos Narrow',
+        'align': 'left'
+    })
+    
+    header_format = workbook.add_format({
+        'bold': True,
+        'font_color': '#FFFFFF',
+        'bg_color': '#1F4E78',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    money_format = workbook.add_format({
+        'num_format': '#,##0.00',
+        'border': 1,
+        'align': 'right',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    worksheet.set_default_row(18)
+    
+    # Row 0: Title
+    worksheet.write(0, 0, 'Supplier Wise ITC Summary', title_format)
+    
+    # Row 2: Headers
+    headers = ['GSTIN', 'Supplier', 'ITC as per Books', 'ITC as per 2B', 'ITC Difference']
+    for col_idx, header in enumerate(headers):
+        worksheet.write(2, col_idx, header, header_format)
+    
+    # Data starting at row 3
+    for row_idx, (_, row) in enumerate(df.iterrows()):
+        worksheet.write(3 + row_idx, 0, str(row['GSTIN']), text_format)
+        worksheet.write(3 + row_idx, 1, str(row['Supplier']), text_format)
+        worksheet.write(3 + row_idx, 2, row['ITC as per Books'], money_format)
+        worksheet.write(3 + row_idx, 3, row['ITC as per 2B'], money_format)
+        worksheet.write(3 + row_idx, 4, row['ITC Difference'], money_format)
+    
+    # Set column widths
+    worksheet.set_column(0, 0, 18)
+    worksheet.set_column(1, 1, 35)
+    worksheet.set_column(2, 2, 15)
+    worksheet.set_column(3, 3, 15)
+    worksheet.set_column(4, 4, 15)
+    
+    # Freeze pane at A3
+    worksheet.freeze_panes(3, 0)
+
+
+def create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map):
+    """Create Supplier Drill Down sheet EXACTLY matching old workbook"""
     if detail_df.empty:
         return
     
@@ -1046,10 +1410,10 @@ def create_supplier_drill_down_sheet(writer, detail_df, r, trade_name_map):
         'font_name': 'Aptos Narrow'
     })
     
-    int_format = workbook.add_format({
-        'num_format': '#,##0',
+    date_format = workbook.add_format({
+        'num_format': 'dd-mmm-yyyy',
         'border': 1,
-        'align': 'right',
+        'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
         'font_name': 'Aptos Narrow'
@@ -1065,69 +1429,172 @@ def create_supplier_drill_down_sheet(writer, detail_df, r, trade_name_map):
     
     worksheet.set_default_row(18)
     
-    worksheet.write(0, 0, 'Supplier-wise ITC Summary', title_format)
+    # Row 0: Title
+    worksheet.write(0, 0, 'Supplier Drill Down — Invoice Level Details (use Month filter to drill down)', title_format)
     
-    # Create supplier summary
-    books_raw = r.get('books_raw', pd.DataFrame())
-    gstr_raw = r.get('gstr_raw', pd.DataFrame())
+    # Prepare data
+    drill_data = detail_df.copy()
+    if 'Date' in drill_data.columns:
+        drill_data['Date'] = pd.to_datetime(drill_data['Date'], errors='coerce')
     
-    suppliers = set()
-    if not books_raw.empty:
-        suppliers.update(books_raw['GSTIN'].unique())
-    if not gstr_raw.empty:
-        suppliers.update(gstr_raw['GSTIN'].unique())
+    # Convert Month to display format
+    if 'Month' in drill_data.columns:
+        drill_data['Month Label'] = drill_data['Month'].apply(
+            lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
+        )
     
-    rows = []
-    for gstin in suppliers:
-        supplier_name = trade_name_map.get(gstin, '')
-        books_itc = books_raw[books_raw['GSTIN'] == gstin]['TOTAL_TAX'].sum() if not books_raw.empty else 0
-        gstr_itc = gstr_raw[gstr_raw['GSTIN'] == gstin]['TOTAL_TAX'].sum() if not gstr_raw.empty else 0
-        diff = gstr_itc - books_itc
-        match_status = '✅ Matched' if abs(diff) <= DEFAULT_TOLERANCE else '⚠️ Difference'
-        
-        rows.append({
-            'GSTIN': gstin,
-            'Supplier Name': supplier_name,
-            'ITC Books': round(float(books_itc), 2),
-            'ITC 2B': round(float(gstr_itc), 2),
-            'Difference': round(float(diff), 2),
-            'Status': match_status
-        })
-    
-    supplier_df = pd.DataFrame(rows)
-    if not supplier_df.empty:
-        supplier_df = supplier_df.sort_values('ITC 2B', ascending=False)
-    
-    # Headers at row 3
-    headers = ['GSTIN', 'Supplier Name', 'ITC Books', 'ITC 2B', 'Difference', 'Status']
+    # Row 2: Headers
+    headers = ['Month Label', 'GSTIN', 'Supplier', 'Invoice No', 'Invoice Date', 'ITC Books', 'ITC 2B', 'Difference', 'Remarks', 'Action Required']
     for col_idx, header in enumerate(headers):
-        worksheet.write(3, col_idx, header, header_format)
+        worksheet.write(2, col_idx, header, header_format)
     
-    # Data at row 4
-    for row_idx, (_, row) in enumerate(supplier_df.iterrows()):
-        worksheet.write(4 + row_idx, 0, row['GSTIN'], text_format)
-        worksheet.write(4 + row_idx, 1, row['Supplier Name'], text_format)
-        worksheet.write(4 + row_idx, 2, row['ITC Books'], money_format)
-        worksheet.write(4 + row_idx, 3, row['ITC 2B'], money_format)
-        worksheet.write(4 + row_idx, 4, row['Difference'], money_format)
-        worksheet.write(4 + row_idx, 5, row['Status'], text_format)
+    # Data starting at row 3
+    for row_idx, (_, row) in enumerate(drill_data.iterrows()):
+        worksheet.write(3 + row_idx, 0, str(row.get('Month Label', '')), text_format)
+        worksheet.write(3 + row_idx, 1, str(row.get('GSTIN', '')), text_format)
+        worksheet.write(3 + row_idx, 2, str(row.get('Supplier', '')), text_format)
+        worksheet.write(3 + row_idx, 3, str(row.get('Invoice No', '')), text_format)
+        
+        if pd.notna(row.get('Date')):
+            try:
+                dt = pd.to_datetime(row['Date'])
+                worksheet.write_datetime(3 + row_idx, 4, dt.to_pydatetime(), date_format)
+            except:
+                worksheet.write(3 + row_idx, 4, str(row.get('Date', '')), text_format)
+        else:
+            worksheet.write(3 + row_idx, 4, "", text_format)
+        
+        worksheet.write(3 + row_idx, 5, row.get('ITC Books', 0), money_format)
+        worksheet.write(3 + row_idx, 6, row.get('ITC 2B', 0), money_format)
+        worksheet.write(3 + row_idx, 7, row.get('Difference', 0), money_format)
+        worksheet.write(3 + row_idx, 8, str(row.get('Remarks', '')), text_format)
+        worksheet.write(3 + row_idx, 9, str(row.get('Action Required', '')), text_format)
     
     # Set column widths
     worksheet.set_column(0, 0, 18)
-    worksheet.set_column(1, 1, 30)
-    worksheet.set_column(2, 2, 15)
-    worksheet.set_column(3, 3, 15)
-    worksheet.set_column(4, 4, 15)
+    worksheet.set_column(1, 1, 18)
+    worksheet.set_column(2, 2, 35)
+    worksheet.set_column(3, 3, 20)
+    worksheet.set_column(4, 4, 12)
     worksheet.set_column(5, 5, 12)
+    worksheet.set_column(6, 6, 12)
+    worksheet.set_column(7, 7, 12)
+    worksheet.set_column(8, 8, 15)
+    worksheet.set_column(9, 9, 20)
     
+    # Freeze pane at A3
     worksheet.freeze_panes(3, 0)
 
 
-def create_monthly_detail_sheets(writer, r, trade_name_map):
-    """Create monthly detail sheets (Mar-2026, Apr-2026 etc.) - critical for old workbook structure"""
+def create_no_itc_sheet_exact_match(writer, r):
+    """Create NO ITC sheet EXACTLY matching old workbook"""
+    no_itc = r.get('no_itc', pd.DataFrame())
+    if no_itc.empty:
+        return
+    
+    # Filter for Invoice_Value > 0
+    no_itc = no_itc[no_itc['Invoice_Value'].astype(float) > 0]
+    if no_itc.empty:
+        return
+    
+    workbook = writer.book
+    worksheet = workbook.add_worksheet('NO ITC')
+    
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 12,
+        'font_name': 'Aptos Narrow',
+        'align': 'left'
+    })
+    
+    header_format = workbook.add_format({
+        'bold': True,
+        'font_color': '#FFFFFF',
+        'bg_color': '#1F4E78',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    money_format = workbook.add_format({
+        'num_format': '#,##0.00',
+        'border': 1,
+        'align': 'right',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    date_format = workbook.add_format({
+        'num_format': 'dd-mmm-yyyy',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow'
+    })
+    
+    worksheet.set_default_row(18)
+    
+    # Row 0: Title
+    worksheet.write(0, 0, 'Zero ITC Invoices', title_format)
+    
+    # Prepare data
+    no_itc_export = no_itc[['GSTIN', 'Trade_Name', 'Invoice_No', 'Invoice_Date', 'Taxable_Value', 'Invoice_Value']].copy()
+    if 'Invoice_Date' in no_itc_export.columns:
+        no_itc_export['Invoice_Date'] = pd.to_datetime(no_itc_export['Invoice_Date'], errors='coerce')
+    
+    # Row 2: Headers
+    headers = ['GSTIN', 'Trade_Name', 'Invoice_No', 'Invoice_Date', 'Taxable_Value', 'Invoice_Value']
+    for col_idx, header in enumerate(headers):
+        worksheet.write(2, col_idx, header, header_format)
+    
+    # Data starting at row 3
+    for row_idx, (_, row) in enumerate(no_itc_export.iterrows()):
+        worksheet.write(3 + row_idx, 0, str(row.get('GSTIN', '')), text_format)
+        worksheet.write(3 + row_idx, 1, str(row.get('Trade_Name', '')), text_format)
+        worksheet.write(3 + row_idx, 2, str(row.get('Invoice_No', '')), text_format)
+        
+        if pd.notna(row.get('Invoice_Date')):
+            try:
+                dt = pd.to_datetime(row['Invoice_Date'])
+                worksheet.write_datetime(3 + row_idx, 3, dt.to_pydatetime(), date_format)
+            except:
+                worksheet.write(3 + row_idx, 3, str(row.get('Invoice_Date', '')), text_format)
+        else:
+            worksheet.write(3 + row_idx, 3, "", text_format)
+        
+        worksheet.write(3 + row_idx, 4, float(row.get('Taxable_Value', 0)), money_format)
+        worksheet.write(3 + row_idx, 5, float(row.get('Invoice_Value', 0)), money_format)
+    
+    # Set column widths
+    worksheet.set_column(0, 0, 18)
+    worksheet.set_column(1, 1, 35)
+    worksheet.set_column(2, 2, 20)
+    worksheet.set_column(3, 3, 12)
+    worksheet.set_column(4, 4, 15)
+    worksheet.set_column(5, 5, 15)
+    
+    # Freeze pane at A3
+    worksheet.freeze_panes(3, 0)
+
+
+def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, tolerance):
+    """Create monthly detail sheets (Mar-2026, Apr-2026, etc.) EXACTLY matching old workbook"""
     books_raw = r.get('books_raw', pd.DataFrame())
     gstr_raw = r.get('gstr_raw', pd.DataFrame())
     
+    # Get all months
     all_months = set()
     if not books_raw.empty and 'Month' in books_raw.columns:
         all_months.update(books_raw['Month'].dropna().unique())
@@ -1135,19 +1602,15 @@ def create_monthly_detail_sheets(writer, r, trade_name_map):
         all_months.update(gstr_raw['Month'].dropna().unique())
     all_months = [m for m in all_months if m and m not in ('', 'NaT')]
     
+    if not all_months:
+        return
+    
     workbook = writer.book
     
+    # Create detail data for each month
     for month in sorted(all_months):
-        # Convert month to display name (Mar-2026 format)
-        try:
-            if isinstance(month, str) and len(month) >= 7:
-                month_name = pd.to_datetime(month + '-01', format='%Y-%m-%d').strftime('%b-%Y')
-            else:
-                month_name = str(month)
-        except:
-            month_name = str(month)
+        month_name = pd.to_datetime(month + '-01', format='%Y-%m-%d').strftime('%b-%Y')
         
-        # Build rows for this month
         rows = []
         
         # Missing in GST
@@ -1160,11 +1623,12 @@ def create_monthly_detail_sheets(writer, r, trade_name_map):
                     'GSTIN': row.get('GSTIN', ''),
                     'Supplier': trade_name_map.get(row.get('GSTIN', ''), row.get('Trade_Name', '')),
                     'Invoice No': row.get('Invoice_No', ''),
-                    'Date': row.get('Invoice_Date'),
+                    'Invoice Date': row.get('Invoice_Date'),
                     'ITC Books': round(float(row.get('TOTAL_TAX', 0)), 2),
                     'ITC 2B': 0,
                     'Difference': -round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'Remarks': 'Missing in GST'
+                    'Remarks': 'Missing in GST',
+                    'Action Required': 'Follow up with supplier'
                 })
         
         # Missing in Books
@@ -1177,11 +1641,12 @@ def create_monthly_detail_sheets(writer, r, trade_name_map):
                     'GSTIN': row.get('GSTIN', ''),
                     'Supplier': trade_name_map.get(row.get('GSTIN', ''), row.get('Trade_Name', '')),
                     'Invoice No': row.get('Invoice_No', ''),
-                    'Date': row.get('Invoice_Date'),
+                    'Invoice Date': row.get('Invoice_Date'),
                     'ITC Books': 0,
                     'ITC 2B': round(float(row.get('TOTAL_TAX', 0)), 2),
                     'Difference': round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'Remarks': 'Missing in Books'
+                    'Remarks': 'Missing in Books',
+                    'Action Required': 'Record purchase entry'
                 })
         
         # Matched and tax differences
@@ -1197,16 +1662,22 @@ def create_monthly_detail_sheets(writer, r, trade_name_map):
                             itc_books = float(row.get('TOTAL_TAX_Books', 0) or 0)
                             itc_gstr = float(row.get('TOTAL_TAX_2B', 0) or 0)
                             diff = itc_gstr - itc_books
-                            remark = "Matched" if abs(diff) <= DEFAULT_TOLERANCE else "Tax Difference"
+                            if abs(diff) <= tolerance:
+                                remark = 'Matched'
+                                action = 'No action'
+                            else:
+                                remark = 'Tax Difference'
+                                action = 'Verify invoice values'
                             rows.append({
                                 'GSTIN': gstin,
                                 'Supplier': trade_name_map.get(gstin, row.get('Trade_Name_2B') or row.get('Trade_Name_Books', '')),
                                 'Invoice No': row.get('Invoice_No_2B') or row.get('Invoice_No_Books', ''),
-                                'Date': inv_date,
+                                'Invoice Date': inv_date,
                                 'ITC Books': itc_books,
                                 'ITC 2B': itc_gstr,
                                 'Difference': diff,
-                                'Remarks': remark
+                                'Remarks': remark,
+                                'Action Required': action
                             })
                     except:
                         pass
@@ -1214,7 +1685,6 @@ def create_monthly_detail_sheets(writer, r, trade_name_map):
         if rows:
             month_df = pd.DataFrame(rows)
             
-            # Create sheet
             worksheet = workbook.add_worksheet(month_name)
             
             title_format = workbook.add_format({
@@ -1262,124 +1732,151 @@ def create_monthly_detail_sheets(writer, r, trade_name_map):
             })
             
             worksheet.set_default_row(18)
-            worksheet.write(0, 0, f'{month_name} Details', title_format)
             
-            headers = ['GSTIN', 'Supplier', 'Invoice No', 'Date', 'ITC Books', 'ITC 2B', 'Difference', 'Remarks']
+            # Row 0: Title
+            worksheet.write(0, 0, f'Invoice Details — {month_name}', title_format)
+            
+            # Row 2: Headers
+            headers = ['GSTIN', 'Supplier', 'Invoice No', 'Invoice Date', 'ITC Books', 'ITC 2B', 'Difference', 'Remarks', 'Action Required']
             for col_idx, header in enumerate(headers):
-                worksheet.write(3, col_idx, header, header_format)
+                worksheet.write(2, col_idx, header, header_format)
             
+            # Data starting at row 3
             for row_idx, (_, row) in enumerate(month_df.iterrows()):
-                worksheet.write(4 + row_idx, 0, row['GSTIN'], text_format)
-                worksheet.write(4 + row_idx, 1, row['Supplier'], text_format)
-                worksheet.write(4 + row_idx, 2, row['Invoice No'], text_format)
-                if pd.notna(row['Date']):
+                worksheet.write(3 + row_idx, 0, str(row['GSTIN']), text_format)
+                worksheet.write(3 + row_idx, 1, str(row['Supplier']), text_format)
+                worksheet.write(3 + row_idx, 2, str(row['Invoice No']), text_format)
+                
+                if pd.notna(row['Invoice Date']):
                     try:
-                        dt = pd.to_datetime(row['Date'])
-                        worksheet.write_datetime(4 + row_idx, 3, dt.to_pydatetime(), date_format)
+                        dt = pd.to_datetime(row['Invoice Date'])
+                        worksheet.write_datetime(3 + row_idx, 3, dt.to_pydatetime(), date_format)
                     except:
-                        worksheet.write(4 + row_idx, 3, str(row['Date']), text_format)
+                        worksheet.write(3 + row_idx, 3, str(row['Invoice Date']), text_format)
                 else:
-                    worksheet.write(4 + row_idx, 3, "", text_format)
-                worksheet.write(4 + row_idx, 4, row['ITC Books'], money_format)
-                worksheet.write(4 + row_idx, 5, row['ITC 2B'], money_format)
-                worksheet.write(4 + row_idx, 6, row['Difference'], money_format)
-                worksheet.write(4 + row_idx, 7, row['Remarks'], text_format)
+                    worksheet.write(3 + row_idx, 3, "", text_format)
+                
+                worksheet.write(3 + row_idx, 4, row['ITC Books'], money_format)
+                worksheet.write(3 + row_idx, 5, row['ITC 2B'], money_format)
+                worksheet.write(3 + row_idx, 6, row['Difference'], money_format)
+                worksheet.write(3 + row_idx, 7, str(row['Remarks']), text_format)
+                worksheet.write(3 + row_idx, 8, str(row['Action Required']), text_format)
             
+            # Set column widths
             worksheet.set_column(0, 0, 18)
-            worksheet.set_column(1, 1, 30)
+            worksheet.set_column(1, 1, 35)
             worksheet.set_column(2, 2, 20)
             worksheet.set_column(3, 3, 12)
             worksheet.set_column(4, 4, 12)
             worksheet.set_column(5, 5, 12)
             worksheet.set_column(6, 6, 12)
             worksheet.set_column(7, 7, 15)
+            worksheet.set_column(8, 8, 20)
             
+            # Freeze pane at A3
             worksheet.freeze_panes(3, 0)
 
 
-def export_to_excel_old_workbook_style(r, detail_df, month_summary, trade_name_map, books_raw, gstr_raw):
-    """Export Excel with EXACT old workbook style"""
+def export_to_excel_old_workbook_exact_match(r, detail_df, month_summary, trade_name_map, books_raw, gstr_raw, tolerance):
+    """Export Excel EXACTLY matching old workbook structure"""
     output = io.BytesIO()
     
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         
-        # 1. Summary sheet (old workbook style)
-        create_old_workbook_style_summary(writer, r)
+        # 1. Summary sheet
+        create_summary_sheet_exact_match(writer, r)
         
-        # 2. Month-wise Summary (old workbook style)
+        # 2. Month-wise Summary sheet
         if not month_summary.empty:
-            create_old_workbook_style_monthwise(writer, month_summary)
+            create_monthwise_summary_exact_match(writer, month_summary)
         
-        # 3. Missing in 2B
-        if not r.get("missing_2b", pd.DataFrame()).empty:
-            m2b = r["missing_2b"].copy()
-            m2b["Invoice_Date"] = pd.to_datetime(m2b["Invoice_Date"], errors='coerce')
-            m2b["Supplier"] = m2b["GSTIN"].map(trade_name_map).fillna(m2b["Trade_Name"])
-            m2b_export = m2b[["GSTIN", "Supplier", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]]
-            m2b_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "ITC"]
-            create_old_workbook_style_data_sheet(writer, "Missing in 2B", m2b_export, "Invoices Missing in GSTR-2B")
-        
-        # 4. Missing in Books
-        if not r.get("missing_books", pd.DataFrame()).empty:
-            mb = r["missing_books"].copy()
-            mb["Invoice_Date"] = pd.to_datetime(mb["Invoice_Date"], errors='coerce')
-            mb["Supplier"] = mb["GSTIN"].map(trade_name_map).fillna(mb["Trade_Name"])
-            mb_export = mb[["GSTIN", "Supplier", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]]
-            mb_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "ITC"]
-            create_old_workbook_style_data_sheet(writer, "Missing in Books", mb_export, "Invoices Missing in Books")
-        
-        # 5. Tax Differences
-        if not r.get("tax_diff", pd.DataFrame()).empty:
-            td = r["tax_diff"].copy()
-            create_old_workbook_style_data_sheet(writer, "Tax Differences", td, "Invoices with Tax Differences")
-        
-        # 6. All Invoices (Detail)
-        if not detail_df.empty:
-            detail_export = detail_df.copy()
-            if "Date" in detail_export.columns:
-                detail_export["Date"] = pd.to_datetime(detail_export["Date"], errors='coerce')
-            create_old_workbook_style_data_sheet(writer, "All Invoices", detail_export, "All Reconciliation Details")
-        
-        # 7. Supplier Drill Down (critical - old workbook structure)
-        create_supplier_drill_down_sheet(writer, detail_df, r, trade_name_map)
-        
-        # 8. Monthly Detail Sheets (Mar-2026, Apr-2026, etc. - critical old workbook structure)
-        create_monthly_detail_sheets(writer, r, trade_name_map)
-        
-        # 9. Books Raw
+        # 3. Books sheet
         if not books_raw.empty:
-            books_export = books_raw.copy()
-            if "Invoice_Date" in books_export.columns:
-                books_export["Invoice_Date"] = pd.to_datetime(books_export["Invoice_Date"], errors='coerce')
-            create_old_workbook_style_data_sheet(writer, "Books", books_export, "Books Data")
+            create_books_sheet_exact_match(writer, books_raw)
         
-        # 10. GSTR-2B Raw
+        # 4. GSTR-2B sheet
         if not gstr_raw.empty:
-            gstr_export = gstr_raw.copy()
-            if "Invoice_Date" in gstr_export.columns:
-                gstr_export["Invoice_Date"] = pd.to_datetime(gstr_export["Invoice_Date"], errors='coerce')
-            create_old_workbook_style_data_sheet(writer, "GSTR-2B", gstr_export, "GSTR-2B Data")
+            create_gstr_sheet_exact_match(writer, gstr_raw)
         
-        # 11. Zero ITC
-        if not r.get("no_itc", pd.DataFrame()).empty:
-            ni = r["no_itc"].copy()
-            ni["Invoice_Date"] = pd.to_datetime(ni["Invoice_Date"], errors='coerce')
-            ni_export = ni[["GSTIN", "Trade_Name", "Invoice_No", "Invoice_Date", "Taxable_Value", "Invoice_Value"]]
-            ni_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "Invoice Value"]
-            ni_export = ni_export[ni_export["Invoice Value"].astype(float) > 0]
-            if not ni_export.empty:
-                create_old_workbook_style_data_sheet(writer, "Zero ITC", ni_export, "Zero ITC Invoices")
+        # 5. Missing in 2B sheet
+        create_missing_in_2b_sheet_exact_match(writer, r, trade_name_map)
         
-        # 12. Data Issues
+        # 6. Missing in Books sheet
+        create_missing_in_books_sheet_exact_match(writer, r, trade_name_map)
+        
+        # 7. Supplier Wise ITC Summary
+        create_supplier_wise_itc_summary_exact_match(writer, r, trade_name_map)
+        
+        # 8. Supplier Drill Down
+        if not detail_df.empty:
+            create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map)
+        
+        # 9. Monthly detail sheets (Mar-2026, Apr-2026, etc.)
+        create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, tolerance)
+        
+        # 10. NO ITC sheet
+        create_no_itc_sheet_exact_match(writer, r)
+        
+        # 11. Data Issues (if any)
         all_issues_local = r["issues"].copy() if not r["issues"].empty else pd.DataFrame()
         if "duplicate_issues" in r and not r["duplicate_issues"].empty:
             all_issues_local = pd.concat([x for x in [all_issues_local, r["duplicate_issues"]] if not x.empty], ignore_index=True)
         
         if not all_issues_local.empty:
+            workbook = writer.book
+            worksheet = workbook.add_worksheet('Data Issues')
+            
+            title_format = workbook.add_format({
+                'bold': True,
+                'font_size': 12,
+                'font_name': 'Aptos Narrow',
+                'align': 'left'
+            })
+            
+            header_format = workbook.add_format({
+                'bold': True,
+                'font_color': '#FFFFFF',
+                'bg_color': '#1F4E78',
+                'border': 1,
+                'align': 'center',
+                'valign': 'vcenter',
+                'font_size': 10,
+                'font_name': 'Aptos Narrow'
+            })
+            
+            text_format = workbook.add_format({
+                'border': 1,
+                'align': 'left',
+                'valign': 'vcenter',
+                'font_size': 10,
+                'font_name': 'Aptos Narrow'
+            })
+            
+            worksheet.set_default_row(18)
+            worksheet.write(0, 0, 'Data Quality Issues', title_format)
+            
             issues_export = all_issues_local.copy()
             if "Invoice_Date" in issues_export.columns:
                 issues_export["Invoice_Date"] = pd.to_datetime(issues_export["Invoice_Date"], errors='coerce')
-            create_old_workbook_style_data_sheet(writer, "Data Issues", issues_export, "Data Quality Issues")
+            
+            headers = list(issues_export.columns)
+            for col_idx, header in enumerate(headers):
+                worksheet.write(2, col_idx, header, header_format)
+            
+            for row_idx, (_, row) in enumerate(issues_export.iterrows()):
+                for col_idx, header in enumerate(headers):
+                    val = row[header]
+                    worksheet.write(3 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
+            
+            for col_idx, header in enumerate(headers):
+                max_len = len(header)
+                if not issues_export.empty:
+                    for row_idx in range(min(100, len(issues_export))):
+                        val = str(issues_export.iloc[row_idx][header]) if pd.notna(issues_export.iloc[row_idx][header]) else ""
+                        max_len = max(max_len, min(len(val), 25))
+                worksheet.set_column(col_idx, col_idx, max_len + 2)
+            
+            worksheet.freeze_panes(3, 0)
     
     output.seek(0)
     return output.getvalue()
@@ -1391,10 +1888,11 @@ st.markdown("<hr>", unsafe_allow_html=True)
 col_dl1, col_dl2 = st.columns(2)
 
 with col_dl1:
-    excel_data = export_to_excel_old_workbook_style(
+    excel_data = export_to_excel_old_workbook_exact_match(
         r, detail_df, month_summary, trade_name_map,
         r.get("books_raw", pd.DataFrame()),
-        r.get("gstr_raw", pd.DataFrame())
+        r.get("gstr_raw", pd.DataFrame()),
+        tolerance
     )
     st.download_button(
         "📥 Download Full Report (Excel)",
