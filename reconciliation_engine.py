@@ -1,7 +1,8 @@
 """
-GST Reconciliation Engine  v7.2
-Fixed: Grouping without date + Duplicate detection with value check
-Position-based parsers verified against Karu.xls + Book1.xlsx
+GST Reconciliation Engine  v7.3
+Fixed: Level 2 and Level 3 matching now include Invoice Date
+Improved normalization for Level 2 (removes special characters, keeps alphanumeric)
+Improved numeric core extraction for Level 3 (removes leading zeros)
 """
 
 import pandas as pd
@@ -429,24 +430,45 @@ def detect_duplicate_invoices(df, source):
 
 # ── 3-level matching ──────────────────────────────────────────────────────────
 
-def _normalize_inv_for_match(inv: str) -> str:
+def _normalize_invoice_for_level2(inv: str) -> str:
     """
     Normalize invoice number for Level 2 matching.
-    Step 1 — strip all non-digit characters.
-    Step 2 — if digits found, return as integer string (removes leading zeros).
-    Step 3 — otherwise return empty string (no match possible at L2).
-
+    Removes special characters, spaces, brackets, dots, etc.
+    Keeps only alphanumeric characters (A-Z, 0-9) in uppercase.
+    
     Examples:
-        SUN-INV/001  ->  '1'
-        01           ->  '1'
-        INV/007      ->  '7'
-        KA-52        ->  '52'
-        KAOA587      ->  '587'
-        ABC          ->  ''   (no digits, skip L2)
+        SUN/2025-68  ->  SUN202568
+        SUN202568    ->  SUN202568
+        INV/001      ->  INV001
+        01-AB/2      ->  01AB2
     """
+    if not inv:
+        return ''
+    s = str(inv).strip().upper()
+    # Remove all non-alphanumeric characters (keep only A-Z and 0-9)
+    normalized = re.sub(r'[^A-Z0-9]', '', s)
+    return normalized
+
+
+def _normalize_invoice_for_level3(inv: str) -> str:
+    """
+    Normalize invoice number for Level 3 matching.
+    Extract numeric portion and remove leading zeros.
+    
+    Examples:
+        SUN-INV/020  ->  '20'
+        020          ->  '20'
+        INV/007      ->  '7'
+        00123        ->  '123'
+        ABC6089      ->  '6089'
+    """
+    if not inv:
+        return ''
+    # Extract all digits
     digits = re.sub(r'\D', '', str(inv).strip())
     if digits:
-        return str(int(digits))   # int() strips leading zeros
+        # Convert to int to remove leading zeros, then back to string
+        return str(int(digits))
     return ''
 
 
@@ -487,6 +509,10 @@ def level1_strict_match(g, b, tol):
                         row.get('Invoice_No_2B', row.get('Invoice_No','')),
                         row.get('Invoice_Date_2B', row.get('Invoice_Date','')))
             failed_gkeys.add(k_2b)
+            k_books = _key(row.get('GSTIN_Books', row.get('GSTIN','')),
+                           row.get('Invoice_No_Books', row.get('Invoice_No','')),
+                           row.get('Invoice_Date_Books', row.get('Invoice_Date','')))
+            failed_bkeys.add(k_books)
 
     g_remaining = g[~g['K'].isin(ks) | g['K'].isin(failed_gkeys)].drop(columns=['K'], errors='ignore')
     b_remaining = b[~b['K'].isin(ks) | b['K'].isin(failed_bkeys)].drop(columns=['K'], errors='ignore')
@@ -497,13 +523,18 @@ def level1_strict_match(g, b, tol):
 
 def level2_normalized_match(g, b, tol):
     """
-    LEVEL 2 — NORMALIZED MATCH
-    Normalize invoice numbers by stripping all non-digit characters
-    and converting the result to an integer string (removes leading zeros).
-    Key  : GSTIN + normalized_invoice_no
+    LEVEL 2 — NORMALIZED MATCH (UPDATED)
+    Conditions:
+        - GSTIN same
+        - Invoice Date same
+        - Normalized invoice number (alphanumeric, special chars removed)
+    
+    Normalization removes: /, *, spaces, brackets, dots, special characters
+    Keeps only A-Z and 0-9 in uppercase.
+    
+    Key  : GSTIN + Invoice_Date + normalized_invoice_no
     Guard: TOTAL_TAX within tolerance
-    Date : NOT compared — booking date vs supplier date can legitimately differ.
-    Duplicate NK rows are dropped before merge to prevent false fan-out.
+    Date : NOW compared (booking date vs supplier date must match)
     """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
@@ -511,22 +542,15 @@ def level2_normalized_match(g, b, tol):
     g = g.copy()
     b = b.copy()
 
-    g['NK'] = [_normalize_inv_for_match(_s(r['Invoice_No'])) for _, r in g.iterrows()]
-    b['NK'] = [_normalize_inv_for_match(_s(r['Invoice_No'])) for _, r in b.iterrows()]
-    g['NK'] = g['NK'].astype(str)
-    b['NK'] = b['NK'].astype(str)
+    # Normalize invoice numbers for Level 2 (remove special chars, keep alphanumeric)
+    g['NK'] = [_normalize_invoice_for_level2(_s(r['Invoice_No'])) for _, r in g.iterrows()]
+    b['NK'] = [_normalize_invoice_for_level2(_s(r['Invoice_No'])) for _, r in b.iterrows()]
 
-    # Rows whose invoice number had no digits cannot be matched at this level
-    g_no_digits = g[g['NK'] == ''].drop(columns=['NK'], errors='ignore')
-    b_no_digits = b[b['NK'] == ''].drop(columns=['NK'], errors='ignore')
-    g = g[g['NK'] != ''].copy()
-    b = b[b['NK'] != ''].copy()
+    # Create composite key: GSTIN + Invoice_Date + normalized_invoice
+    g['NK'] = [_key(r['GSTIN'], r['Invoice_Date'], r['NK']) for _, r in g.iterrows()]
+    b['NK'] = [_key(r['GSTIN'], r['Invoice_Date'], r['NK']) for _, r in b.iterrows()]
 
-    # GSTIN + normalized key
-    g['NK'] = [_key(r['GSTIN'], r['NK']) for _, r in g.iterrows()]
-    b['NK'] = [_key(r['GSTIN'], r['NK']) for _, r in b.iterrows()]
-
-    # Drop duplicate normalized keys — keeps first occurrence, rest go to next level
+    # Drop duplicate normalized keys - keep first occurrence, rest go to next level
     g_dup_mask = g.duplicated(subset=['NK'], keep=False)
     b_dup_mask = b.duplicated(subset=['NK'], keep=False)
     g_dups = g[g_dup_mask].drop(columns=['NK'], errors='ignore')
@@ -536,8 +560,8 @@ def level2_normalized_match(g, b, tol):
 
     ks = set(g['NK']) & set(b['NK'])
     if not ks:
-        g_remaining = pd.concat([g.drop(columns=['NK'], errors='ignore'), g_dups, g_no_digits], ignore_index=True)
-        b_remaining = pd.concat([b.drop(columns=['NK'], errors='ignore'), b_dups, b_no_digits], ignore_index=True)
+        g_remaining = pd.concat([g.drop(columns=['NK'], errors='ignore'), g_dups], ignore_index=True)
+        b_remaining = pd.concat([b.drop(columns=['NK'], errors='ignore'), b_dups], ignore_index=True)
         return pd.DataFrame(), g_remaining, b_remaining, set()
 
     merged = pd.merge(
@@ -549,29 +573,26 @@ def level2_normalized_match(g, b, tol):
 
     # Tax tolerance guard
     merged['TAX_DIFF'] = merged['TOTAL_TAX_2B'].apply(_f) - merged['TOTAL_TAX_Books'].apply(_f)
-    matched  = merged[merged['TAX_DIFF'].abs() <= tol].copy()
-    tax_fail = merged[merged['TAX_DIFF'].abs() >  tol].copy()
+    matched = merged[merged['TAX_DIFF'].abs() <= tol].copy()
+    tax_fail = merged[merged['TAX_DIFF'].abs() > tol].copy()
 
-    # Build remaining pools
-    matched_gkeys = set(g[g['NK'].isin(ks)]['NK']) - set()   # will refine below
-    # Rows that passed tax guard are consumed; those that failed return to pool
+    # Build consumed keys set for rows that passed tax guard
     consumed_nks = set()
     if not matched.empty:
-        # NK col was dropped; re-derive from GSTIN + Invoice_No columns
         for _, row in matched.iterrows():
             gstin = _s(row.get('GSTIN_2B', row.get('GSTIN', '')))
-            inv   = _s(row.get('Invoice_No_2B', row.get('Invoice_No', '')))
-            consumed_nks.add(_key(gstin, _normalize_inv_for_match(inv)))
+            inv_date = row.get('Invoice_Date_2B', row.get('Invoice_Date', ''))
+            inv = _s(row.get('Invoice_No_2B', row.get('Invoice_No', '')))
+            norm_inv = _normalize_invoice_for_level2(inv)
+            consumed_nks.add(_key(gstin, inv_date, norm_inv))
 
     g_remaining = pd.concat([
         g[~g['NK'].isin(consumed_nks)].drop(columns=['NK'], errors='ignore'),
-        g_dups,
-        g_no_digits
+        g_dups
     ], ignore_index=True)
     b_remaining = pd.concat([
         b[~b['NK'].isin(consumed_nks)].drop(columns=['NK'], errors='ignore'),
-        b_dups,
-        b_no_digits
+        b_dups
     ], ignore_index=True)
 
     logger.info(f'L2: {len(matched)} matched, {len(tax_fail)} failed tax guard')
@@ -580,16 +601,15 @@ def level2_normalized_match(g, b, tol):
 
 def level3_numeric_core_match(g, b, tol):
     """
-    LEVEL 3 — NUMERIC CORE FALLBACK
-    Extract the LONGEST digit sequence from the invoice number.
-    Key  : GSTIN + numeric_core
+    LEVEL 3 — NUMERIC CORE FALLBACK (UPDATED)
+    Conditions:
+        - GSTIN same
+        - Invoice Date same
+        - Numeric core (longest digit sequence, leading zeros removed)
+    
+    Key  : GSTIN + Invoice_Date + numeric_core
     Guard: TOTAL_TAX within tolerance
-    Date : NOT compared.
-
-    Examples:
-        ABC/6089/24  ->  '6089'   (longest sequence)
-        INV6089      ->  '6089'
-        SUN-INV/052  ->  '052'  ->  kept as string for core (no int conversion here)
+    Date : NOW compared
     """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
@@ -598,10 +618,10 @@ def level3_numeric_core_match(g, b, tol):
     b = b.copy()
 
     def _core_key(row):
-        core = extract_numeric_core(_s(row['Invoice_No']))
+        core = _normalize_invoice_for_level3(_s(row['Invoice_No']))
         if not core:
             return ''
-        return _key(row['GSTIN'], core)
+        return _key(row['GSTIN'], row['Invoice_Date'], core)
 
     g['CK'] = [_core_key(r) for _, r in g.iterrows()]
     b['CK'] = [_core_key(r) for _, r in b.iterrows()]
