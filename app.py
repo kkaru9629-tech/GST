@@ -1,6 +1,7 @@
 """
 GST Reconciliation App
-Version: 10.2 — Professional Accounting Style Report
+Version: 11.0 — Professional Accounting Style Excel Export
+EXACT MATCH to old summary workbook visual style
 """
 
 import streamlit as st
@@ -39,13 +40,11 @@ st.set_page_config(page_title="GST Reconciliation", layout="wide")
 # Professional accounting style
 st.markdown("""
 <style>
-    /* Main font - Professional */
     .stApp, .stMarkdown, .stText, .stCaption, .stMetric,
     .stTabs [data-baseweb="tab"], button, label, input {
         font-family: 'Segoe UI', 'Calibri', 'Arial', sans-serif !important;
     }
     
-    /* Professional Summary Card */
     .summary-card {
         background: white;
         border: 1px solid #d0d0d0;
@@ -60,17 +59,12 @@ st.markdown("""
         padding: 10px 16px;
         font-weight: 600;
         font-size: 14px;
-        letter-spacing: 0.5px;
     }
     
     .summary-card-row {
         display: flex;
         border-bottom: 1px solid #e8e8e8;
         padding: 8px 16px;
-    }
-    
-    .summary-card-row:last-child {
-        border-bottom: none;
     }
     
     .summary-card-label {
@@ -87,29 +81,6 @@ st.markdown("""
         color: #1e3a5f;
     }
     
-    .summary-card-total {
-        background: #f5f5f5;
-        display: flex;
-        border-top: 2px solid #1e3a5f;
-        padding: 10px 16px;
-    }
-    
-    .summary-card-total-label {
-        width: 50%;
-        font-size: 14px;
-        font-weight: 700;
-        color: #1e3a5f;
-    }
-    
-    .summary-card-total-value {
-        width: 50%;
-        text-align: right;
-        font-size: 14px;
-        font-weight: 700;
-        color: #1e3a5f;
-    }
-    
-    /* Metric Cards */
     .metric-card {
         background: white;
         border: 1px solid #d0d0d0;
@@ -129,13 +100,10 @@ st.markdown("""
         color: #666;
         margin-top: 4px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
     }
     
-    /* Table styling */
     .stDataFrame table {
         font-size: 12px !important;
-        font-family: 'Segoe UI', 'Calibri', monospace !important;
     }
     
     .stDataFrame thead tr th {
@@ -143,71 +111,6 @@ st.markdown("""
         color: white !important;
         font-weight: 600 !important;
         padding: 10px 8px !important;
-        border: 1px solid #2c4e7a !important;
-    }
-    
-    .stDataFrame tbody tr td {
-        border: 1px solid #e0e0e0 !important;
-        padding: 8px 8px !important;
-    }
-    
-    .stDataFrame tbody tr:hover {
-        background-color: #f5f5f5 !important;
-    }
-    
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
-        background-color: #f0f0f0;
-        padding: 4px 4px 0 4px;
-        border-radius: 4px 4px 0 0;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        padding: 8px 20px;
-        font-size: 13px;
-        font-weight: 500;
-        border-radius: 4px 4px 0 0;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: #1e3a5f !important;
-        color: white !important;
-    }
-    
-    /* Divider */
-    hr {
-        margin: 20px 0;
-        border: none;
-        border-top: 1px solid #d0d0d0;
-    }
-    
-    /* Warning/Info boxes */
-    .warning-box {
-        background-color: #fff3e0;
-        border-left: 3px solid #ed6c02;
-        padding: 10px 15px;
-        border-radius: 3px;
-        margin: 10px 0;
-        font-size: 12px;
-    }
-    
-    .info-box {
-        background-color: #e8f0fe;
-        border-left: 3px solid #1e3a5f;
-        padding: 10px 15px;
-        border-radius: 3px;
-        margin: 10px 0;
-        font-size: 12px;
-    }
-    
-    .success-box {
-        background-color: #e8f5e9;
-        border-left: 3px solid #2e7d32;
-        padding: 10px 15px;
-        border-radius: 3px;
-        margin: 10px 0;
-        font-size: 12px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -634,22 +537,7 @@ if not month_summary.empty:
         lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
     )
     
-    styled_df = month_summary_display.style.format({
-        "Books ITC": "{:,.2f}",
-        "GSTR ITC": "{:,.2f}",
-        "Difference": "{:,.2f}"
-    }).set_properties(**{
-        'text-align': 'center',
-        'padding': '8px',
-        'font-size': '12px'
-    }).set_table_styles([
-        {'selector': 'thead tr th', 'props': [('background', '#1e3a5f'), ('color', 'white'), ('border', '1px solid #2c4e7a'), ('padding', '10px'), ('font-weight', '600')]},
-        {'selector': 'tbody tr td', 'props': [('border', '1px solid #ddd'), ('padding', '8px')]},
-        {'selector': 'tbody tr:hover', 'props': [('background', '#f5f5f5')]},
-        {'selector': 'table', 'props': [('border-collapse', 'collapse'), ('width', '100%')]}
-    ])
-    
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    st.dataframe(month_summary_display, use_container_width=True, hide_index=True)
     st.caption(f"{len(month_summary)} month(s) of data")
 
 # =================== FILTER CONTROLS =================== #
@@ -777,153 +665,296 @@ if not r["no_itc"].empty:
         st.markdown("## Zero ITC Invoices")
         st.dataframe(no_itc_df, use_container_width=True, hide_index=True)
 
-# =================== EXCEL EXPORT WITH PROFESSIONAL FORMATTING ===================
+# =================== EXCEL EXPORT WITH PROFESSIONAL ACCOUNTING FORMATTING ===================
 
-def create_supplier_wise_summary(books_raw, gstr_raw, trade_name_map):
-    """Create supplier-wise ITC summary matching old summary style"""
-    if books_raw.empty and gstr_raw.empty:
-        return pd.DataFrame()
-    
-    suppliers = set()
-    if not books_raw.empty:
-        suppliers.update(books_raw['GSTIN'].unique())
-    if not gstr_raw.empty:
-        suppliers.update(gstr_raw['GSTIN'].unique())
-    
-    rows = []
-    for gstin in suppliers:
-        supplier_name = trade_name_map.get(gstin, '')
-        
-        books_itc = books_raw[books_raw['GSTIN'] == gstin]['TOTAL_TAX'].sum() if not books_raw.empty else 0
-        gstr_itc = gstr_raw[gstr_raw['GSTIN'] == gstin]['TOTAL_TAX'].sum() if not gstr_raw.empty else 0
-        
-        rows.append({
-            'GSTIN': gstin,
-            'Supplier Name': supplier_name,
-            'ITC as per Books': round(float(books_itc), 2),
-            'ITC as per 2B': round(float(gstr_itc), 2),
-            'ITC Difference': round(float(gstr_itc - books_itc), 2),
-        })
-    
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values('ITC as per 2B', ascending=False)
-    return df
-
-
-def create_supplier_drill_down(r, trade_name_map, detail_df):
-    """Create supplier drill down sheet matching old summary style"""
-    if detail_df.empty:
-        return pd.DataFrame()
-    
-    drill_df = detail_df[['Month', 'GSTIN', 'Supplier', 'Invoice No', 'Date', 'ITC Books', 'ITC 2B', 'Difference', 'Remarks', 'Action Required']].copy()
-    return drill_df
-
-
-def create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r):
-    """Create monthly detail sheets matching old summary style"""
-    monthly_data = {}
-    
-    all_months = set()
-    if not books_raw.empty and 'Month' in books_raw.columns:
-        all_months.update(books_raw['Month'].dropna().unique())
-    if not gstr_raw.empty and 'Month' in gstr_raw.columns:
-        all_months.update(gstr_raw['Month'].dropna().unique())
-    all_months = [m for m in all_months if m and m not in ('', 'NaT')]
-    
-    for month in sorted(all_months):
-        # SAFELY convert month to display name
-        try:
-            if isinstance(month, str) and len(month) >= 7:
-                month_name = pd.to_datetime(month + '-01', format='%Y-%m-%d').strftime('%b-%Y')
-            elif isinstance(month, str) and len(month) >= 4:
-                month_name = month
-            else:
-                month_name = str(month)
-        except Exception:
-            month_name = str(month)
-        
-        rows = []
-        
-        # Add missing in GST (2B)
-        if not r.get('missing_2b', pd.DataFrame()).empty:
-            m2b = r['missing_2b'].copy()
-            m2b['MonthCheck'] = pd.to_datetime(m2b['Invoice_Date'], errors='coerce').dt.to_period('M').astype(str)
-            m2b_filtered = m2b[m2b['MonthCheck'] == month]
-            for _, row in m2b_filtered.iterrows():
-                rows.append({
-                    'GSTIN': row.get('GSTIN', ''),
-                    'Supplier': trade_name_map.get(row.get('GSTIN', ''), row.get('Trade_Name', '')),
-                    'Invoice No': row.get('Invoice_No', ''),
-                    'Invoice Date': row.get('Invoice_Date', ''),
-                    'ITC Books': round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'ITC 2B': 0,
-                    'Difference': -round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'Remarks': '❌ Missing in GST',
-                    'Action Required': 'Follow up with supplier'
-                })
-        
-        # Add missing in Books
-        if not r.get('missing_books', pd.DataFrame()).empty:
-            mb = r['missing_books'].copy()
-            mb['MonthCheck'] = pd.to_datetime(mb['Invoice_Date'], errors='coerce').dt.to_period('M').astype(str)
-            mb_filtered = mb[mb['MonthCheck'] == month]
-            for _, row in mb_filtered.iterrows():
-                rows.append({
-                    'GSTIN': row.get('GSTIN', ''),
-                    'Supplier': trade_name_map.get(row.get('GSTIN', ''), row.get('Trade_Name', '')),
-                    'Invoice No': row.get('Invoice_No', ''),
-                    'Invoice Date': row.get('Invoice_Date', ''),
-                    'ITC Books': 0,
-                    'ITC 2B': round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'Difference': round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'Remarks': '📕 Missing in Books',
-                    'Action Required': 'Record purchase entry'
-                })
-        
-        # Add matched and tax difference
-        if not r.get('matched', pd.DataFrame()).empty:
-            matched = r['matched'].copy()
-            for _, row in matched.iterrows():
-                inv_date = row.get('Invoice_Date_2B') or row.get('Invoice_Date_Books')
-                if pd.notna(inv_date):
-                    try:
-                        inv_month = str(pd.to_datetime(inv_date).to_period('M'))
-                    except Exception:
-                        inv_month = ''
-                    if inv_month == month:
-                        gstin = row.get('GSTIN_2B') or row.get('GSTIN_Books', '')
-                        itc_books = float(row.get('TOTAL_TAX_Books', 0) or 0)
-                        itc_gstr = float(row.get('TOTAL_TAX_2B', 0) or 0)
-                        diff = itc_gstr - itc_books
-                        remark = "✅ Matched" if abs(diff) <= DEFAULT_TOLERANCE else "⚠️ Tax Difference"
-                        rows.append({
-                            'GSTIN': gstin,
-                            'Supplier': trade_name_map.get(gstin, row.get('Trade_Name_2B') or row.get('Trade_Name_Books', '')),
-                            'Invoice No': row.get('Invoice_No_2B') or row.get('Invoice_No_Books', ''),
-                            'Invoice Date': inv_date,
-                            'ITC Books': itc_books,
-                            'ITC 2B': itc_gstr,
-                            'Difference': diff,
-                            'Remarks': remark,
-                            'Action Required': ACTION_MAP.get(remark, '')
-                        })
-        
-        if rows:
-            monthly_data[month_name] = pd.DataFrame(rows)
-    
-    return monthly_data
-
-
-def apply_professional_formatting(writer, sheet_name, df, headers, include_title=True, title_text=None):
-    """Apply professional accounting-style Excel formatting matching old summary style"""
+def apply_professional_accounting_formatting(writer, sheet_name, df, title=None):
+    """Apply professional accounting/MIS report styling - MATCHES OLD SUMMARY WORKBOOK EXACTLY"""
     workbook = writer.book
     worksheet = writer.sheets[sheet_name]
     
-    # Define formats
+    # Professional accounting formats
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 14,
+        'font_color': '#1F4E78',
+        'font_name': 'Calibri',
+        'align': 'left',
+        'valign': 'vcenter'
+    })
+    
     header_format = workbook.add_format({
         'bold': True,
-        'font_color': 'white',
+        'font_color': '#FFFFFF',
+        'bg_color': '#1F4E78',
+        'border': 1,
+        'border_color': '#2C5A8C',
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri',
+        'text_wrap': True
+    })
+    
+    money_format = workbook.add_format({
+        'num_format': '#,##0.00',
+        'border': 1,
+        'border_color': '#E0E0E0',
+        'align': 'right',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    integer_format = workbook.add_format({
+        'num_format': '#,##0',
+        'border': 1,
+        'border_color': '#E0E0E0',
+        'align': 'right',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    text_format = workbook.add_format({
+        'border': 1,
+        'border_color': '#E0E0E0',
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    date_format = workbook.add_format({
+        'num_format': 'dd-mmm-yyyy',
+        'border': 1,
+        'border_color': '#E0E0E0',
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    center_format = workbook.add_format({
+        'border': 1,
+        'border_color': '#E0E0E0',
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    row_num = 0
+    
+    # Add title (merged across columns)
+    if title:
+        worksheet.merge_range(row_num, 0, row_num, len(df.columns) - 1, title, title_format)
+        row_num += 2  # Add extra spacing
+    
+    # Write headers
+    for col_idx, col_name in enumerate(df.columns):
+        worksheet.write(row_num, col_idx, col_name, header_format)
+    row_num += 1
+    
+    # Write data rows with compact row height (15)
+    worksheet.set_default_row(15)
+    
+    for data_row_idx, (_, row) in enumerate(df.iterrows()):
+        for col_idx, col_name in enumerate(df.columns):
+            value = row[col_name]
+            col_lower = col_name.lower()
+            
+            # Apply appropriate format based on column type
+            if any(term in col_lower for term in ['itc', 'difference', 'taxable', 'value', 'amount', 'cgst', 'sgst', 'igst', 'cess', 'price']):
+                worksheet.write(row_num + data_row_idx, col_idx, float(value) if pd.notna(value) else 0, money_format)
+            elif any(term in col_lower for term in ['count', 'matched', 'missing', 'quantity', 'qty']):
+                worksheet.write(row_num + data_row_idx, col_idx, int(value) if pd.notna(value) else 0, integer_format)
+            elif 'date' in col_lower or col_name == 'Invoice Date' or col_name == 'Date':
+                if pd.notna(value):
+                    try:
+                        dt = pd.to_datetime(value)
+                        worksheet.write_datetime(row_num + data_row_idx, col_idx, dt.to_pydatetime(), date_format)
+                    except:
+                        worksheet.write(row_num + data_row_idx, col_idx, str(value), text_format)
+                else:
+                    worksheet.write(row_num + data_row_idx, col_idx, "", text_format)
+            elif col_name in ['Remarks', 'Action Required', 'Status', 'Source', 'Issue']:
+                worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", center_format)
+            elif col_name in ['Month', 'GSTIN', 'Supplier', 'Invoice No', 'Trade Name']:
+                worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", text_format)
+            else:
+                worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", text_format)
+    
+    # Auto-fit column widths with professional compactness
+    for col_idx, col_name in enumerate(df.columns):
+        max_len = len(col_name)
+        if not df.empty:
+            for data_row_idx, (_, row) in enumerate(df.iterrows()):
+                val = str(row[col_name]) if pd.notna(row[col_name]) else ""
+                max_len = max(max_len, min(len(val), 40))
+        # Set width with reasonable limits
+        width = min(max_len + 2, 35)
+        worksheet.set_column(col_idx, col_idx, width)
+    
+    # Freeze header row
+    worksheet.freeze_panes(row_num, 0)
+
+
+def create_summary_sheet_professional(writer, r):
+    """Create professional Summary sheet matching old workbook style exactly"""
+    workbook = writer.book
+    worksheet = workbook.add_worksheet('Summary')
+    
+    # Define formats
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 16,
+        'font_color': '#1F4E78',
+        'font_name': 'Calibri',
+        'align': 'left',
+        'valign': 'vcenter'
+    })
+    
+    section_header_format = workbook.add_format({
+        'bold': True,
+        'font_size': 12,
+        'font_color': '#1F4E78',
+        'font_name': 'Calibri',
+        'align': 'left',
+        'valign': 'vcenter',
+        'bottom': 2,
+        'bottom_color': '#1F4E78'
+    })
+    
+    label_format = workbook.add_format({
+        'bold': True,
+        'font_size': 11,
+        'font_name': 'Calibri',
+        'align': 'left',
+        'valign': 'vcenter',
+        'bg_color': '#F5F5F5'
+    })
+    
+    value_format = workbook.add_format({
+        'font_size': 11,
+        'font_name': 'Calibri',
+        'align': 'right',
+        'valign': 'vcenter',
+        'num_format': '#,##0.00'
+    })
+    
+    value_int_format = workbook.add_format({
+        'font_size': 11,
+        'font_name': 'Calibri',
+        'align': 'right',
+        'valign': 'vcenter',
+        'num_format': '#,##0'
+    })
+    
+    total_label_format = workbook.add_format({
+        'bold': True,
+        'font_size': 12,
+        'font_color': '#1F4E78',
+        'font_name': 'Calibri',
+        'align': 'left',
+        'valign': 'vcenter',
+        'top': 2,
+        'top_color': '#1F4E78'
+    })
+    
+    total_value_format = workbook.add_format({
+        'bold': True,
+        'font_size': 12,
+        'font_color': '#1F4E78',
+        'font_name': 'Calibri',
+        'align': 'right',
+        'valign': 'vcenter',
+        'num_format': '#,##0.00',
+        'top': 2,
+        'top_color': '#1F4E78'
+    })
+    
+    # Title
+    worksheet.write(0, 0, 'GST RECONCILIATION REPORT', title_format)
+    worksheet.write(1, 0, f'Generated on: {datetime.now().strftime("%d-%b-%Y %H:%M")}', title_format)
+    
+    row = 3
+    
+    # ITC Section
+    worksheet.write(row, 0, 'ITC SUMMARY', section_header_format)
+    row += 2
+    
+    worksheet.write(row, 0, 'ITC - Books', label_format)
+    worksheet.write(row, 1, r['summary']['ITC_Books'], value_format)
+    row += 1
+    
+    worksheet.write(row, 0, 'ITC - GSTR-2B', label_format)
+    worksheet.write(row, 1, r['summary']['ITC_GSTR'], value_format)
+    row += 1
+    
+    worksheet.write(row, 0, 'Difference', label_format)
+    diff_val = r['summary']['ITC_Diff']
+    worksheet.write(row, 1, diff_val, value_format)
+    row += 2
+    
+    worksheet.write(row, 0, 'Match %', total_label_format)
+    worksheet.write(row, 1, r['summary']['Match_%'], total_value_format)
+    row += 3
+    
+    # Invoice Counts Section
+    worksheet.write(row, 0, 'INVOICE COUNTS', section_header_format)
+    row += 2
+    
+    worksheet.write(row, 0, 'Total Books Invoices', label_format)
+    worksheet.write(row, 1, r['summary']['Total_Books'], value_int_format)
+    row += 1
+    
+    worksheet.write(row, 0, 'Total GSTR-2B Invoices', label_format)
+    worksheet.write(row, 1, r['summary']['Total_GSTR'], value_int_format)
+    row += 2
+    
+    worksheet.write(row, 0, '✅ Matched', label_format)
+    worksheet.write(row, 1, r['summary']['Matched'], value_int_format)
+    row += 1
+    
+    worksheet.write(row, 0, '⚠️ Tax Difference', label_format)
+    worksheet.write(row, 1, r['summary']['Tax_Diff'], value_int_format)
+    row += 1
+    
+    worksheet.write(row, 0, '❌ Missing in 2B', label_format)
+    worksheet.write(row, 1, r['summary']['Missing_2B'], value_int_format)
+    row += 1
+    
+    worksheet.write(row, 0, '📕 Missing in Books', label_format)
+    worksheet.write(row, 1, r['summary']['Missing_Books'], value_int_format)
+    
+    # Set column widths
+    worksheet.set_column(0, 0, 25)
+    worksheet.set_column(1, 1, 18)
+    
+    # Freeze panes
+    worksheet.freeze_panes(4, 0)
+
+
+def create_monthwise_sheet_professional(writer, month_summary):
+    """Create Month-wise Summary sheet matching old workbook style exactly"""
+    if month_summary.empty:
+        return
+    
+    workbook = writer.book
+    worksheet = workbook.add_worksheet('Month-wise Summary')
+    
+    # Define formats
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 14,
+        'font_color': '#1F4E78',
+        'font_name': 'Calibri',
+        'align': 'left'
+    })
+    
+    header_format = workbook.add_format({
+        'bold': True,
+        'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
         'border': 1,
         'align': 'center',
@@ -932,7 +963,7 @@ def apply_professional_formatting(writer, sheet_name, df, headers, include_title
         'font_name': 'Calibri'
     })
     
-    number_format = workbook.add_format({
+    money_format = workbook.add_format({
         'num_format': '#,##0.00',
         'border': 1,
         'align': 'right',
@@ -941,7 +972,7 @@ def apply_professional_formatting(writer, sheet_name, df, headers, include_title
         'font_name': 'Calibri'
     })
     
-    integer_format = workbook.add_format({
+    int_format = workbook.add_format({
         'num_format': '#,##0',
         'border': 1,
         'align': 'right',
@@ -953,6 +984,94 @@ def apply_professional_formatting(writer, sheet_name, df, headers, include_title
     text_format = workbook.add_format({
         'border': 1,
         'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    # Title
+    worksheet.write(0, 0, 'Month-wise ITC Summary', title_format)
+    
+    # Prepare display data with formatted month names
+    display_df = month_summary.copy()
+    display_df['Month'] = display_df['Month'].apply(
+        lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%b-%Y") if pd.notna(m) and m not in ("", "NaT") else m
+    )
+    
+    # Write headers starting at row 2
+    headers = list(display_df.columns)
+    for col_idx, header in enumerate(headers):
+        worksheet.write(2, col_idx, header, header_format)
+    
+    # Write data with compact rows
+    worksheet.set_default_row(15)
+    for row_idx, (_, row) in enumerate(display_df.iterrows()):
+        for col_idx, header in enumerate(headers):
+            val = row[header]
+            col_lower = header.lower()
+            
+            if 'itc' in col_lower or 'difference' in col_lower:
+                worksheet.write(3 + row_idx, col_idx, float(val) if pd.notna(val) else 0, money_format)
+            elif 'missing' in col_lower or 'matched' in col_lower:
+                worksheet.write(3 + row_idx, col_idx, int(val) if pd.notna(val) else 0, int_format)
+            else:
+                worksheet.write(3 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
+    
+    # Auto-fit columns
+    for col_idx, header in enumerate(headers):
+        max_len = len(header)
+        if not display_df.empty:
+            for _, row in display_df.iterrows():
+                val = str(row[header]) if pd.notna(row[header]) else ""
+                max_len = max(max_len, min(len(val), 35))
+        worksheet.set_column(col_idx, col_idx, min(max_len + 2, 25))
+    
+    # Freeze header row
+    worksheet.freeze_panes(3, 0)
+
+
+def create_data_sheet_professional(writer, sheet_name, df, title=None):
+    """Create any data sheet with professional formatting"""
+    if df.empty:
+        return
+    
+    workbook = writer.book
+    worksheet = workbook.add_worksheet(sheet_name[:31])  # Excel sheet name max 31 chars
+    
+    # Define formats
+    title_format = workbook.add_format({
+        'bold': True,
+        'font_size': 14,
+        'font_color': '#1F4E78',
+        'font_name': 'Calibri',
+        'align': 'left'
+    })
+    
+    header_format = workbook.add_format({
+        'bold': True,
+        'font_color': '#FFFFFF',
+        'bg_color': '#1F4E78',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri',
+        'text_wrap': True
+    })
+    
+    money_format = workbook.add_format({
+        'num_format': '#,##0.00',
+        'border': 1,
+        'align': 'right',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Calibri'
+    })
+    
+    int_format = workbook.add_format({
+        'num_format': '#,##0',
+        'border': 1,
+        'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
         'font_name': 'Calibri'
@@ -975,179 +1094,126 @@ def apply_professional_formatting(writer, sheet_name, df, headers, include_title
         'font_name': 'Calibri'
     })
     
-    title_format = workbook.add_format({
-        'bold': True,
-        'font_size': 12,
-        'font_color': '#1F4E78',
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
         'font_name': 'Calibri'
     })
     
     row_num = 0
     
-    # Add title if requested
-    if include_title and title_text:
-        worksheet.write(row_num, 0, title_text, title_format)
-        row_num += 1
-        row_num += 1  # blank row
+    # Add title if provided
+    if title:
+        worksheet.merge_range(row_num, 0, row_num, len(df.columns) - 1, title, title_format)
+        row_num += 2
     
     # Write headers
+    headers = list(df.columns)
     for col_idx, header in enumerate(headers):
         worksheet.write(row_num, col_idx, header, header_format)
     row_num += 1
     
-    # Write data
-    if not df.empty:
-        for data_row_idx, row in df.iterrows():
-            for col_idx, col_name in enumerate(headers):
-                value = row[col_name]
-                col_lower = col_name.lower()
-                
-                if any(term in col_lower for term in ['itc', 'difference', 'taxable', 'value', 'amount', 'cgst', 'sgst', 'igst', 'cess']):
-                    worksheet.write(row_num + data_row_idx, col_idx, float(value) if pd.notna(value) else 0, number_format)
-                elif col_lower in ['matched', 'missing 2b', 'missing books', 'count']:
-                    worksheet.write(row_num + data_row_idx, col_idx, int(value) if pd.notna(value) else 0, integer_format)
-                elif 'date' in col_lower or col_name == 'Invoice Date':
-                    if pd.notna(value):
-                        try:
-                            dt = pd.to_datetime(value)
-                            worksheet.write_datetime(row_num + data_row_idx, col_idx, dt.to_pydatetime(), date_format)
-                        except:
-                            worksheet.write(row_num + data_row_idx, col_idx, str(value), text_format)
-                    else:
-                        worksheet.write(row_num + data_row_idx, col_idx, "", text_format)
-                elif col_name in ['Remarks', 'Action Required', 'Source', 'Issue']:
-                    worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", center_format)
-                else:
-                    worksheet.write(row_num + data_row_idx, col_idx, str(value) if pd.notna(value) else "", text_format)
+    # Write data with compact rows
+    worksheet.set_default_row(15)
     
-    # Auto-fit column widths
+    for data_row_idx, (_, row) in enumerate(df.iterrows()):
+        for col_idx, header in enumerate(headers):
+            val = row[header]
+            col_lower = header.lower()
+            
+            if any(term in col_lower for term in ['itc', 'difference', 'taxable', 'value', 'amount', 'cgst', 'sgst', 'igst', 'cess']):
+                worksheet.write(row_num + data_row_idx, col_idx, float(val) if pd.notna(val) else 0, money_format)
+            elif any(term in col_lower for term in ['count', 'matched', 'missing']):
+                worksheet.write(row_num + data_row_idx, col_idx, int(val) if pd.notna(val) else 0, int_format)
+            elif 'date' in col_lower:
+                if pd.notna(val):
+                    try:
+                        dt = pd.to_datetime(val)
+                        worksheet.write_datetime(row_num + data_row_idx, col_idx, dt.to_pydatetime(), date_format)
+                    except:
+                        worksheet.write(row_num + data_row_idx, col_idx, str(val), text_format)
+                else:
+                    worksheet.write(row_num + data_row_idx, col_idx, "", text_format)
+            elif header in ['Remarks', 'Action Required', 'Status']:
+                worksheet.write(row_num + data_row_idx, col_idx, str(val) if pd.notna(val) else "", center_format)
+            else:
+                worksheet.write(row_num + data_row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
+    
+    # Auto-fit columns with professional compactness
     for col_idx, header in enumerate(headers):
         max_len = len(header)
         if not df.empty:
-            for data_row_idx, row in df.iterrows():
-                val = str(row[header]) if pd.notna(row[header]) else ""
-                max_len = max(max_len, min(len(val), 35))
-        worksheet.set_column(col_idx, col_idx, max_len + 2)
+            sample_size = min(100, len(df))
+            for data_row_idx in range(sample_size):
+                val = str(df.iloc[data_row_idx][header]) if pd.notna(df.iloc[data_row_idx][header]) else ""
+                max_len = max(max_len, min(len(val), 40))
+        width = min(max_len + 2, 30)
+        worksheet.set_column(col_idx, col_idx, width)
     
-    # Freeze header row
+    # Freeze header
     worksheet.freeze_panes(row_num, 0)
 
 
-def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books_raw, gstr_raw):
-    """Export with professional accounting-style Excel formatting matching old summary style"""
+def export_to_excel_professional(r, detail_df, month_summary, trade_name_map, books_raw, gstr_raw):
+    """Export with professional accounting-style Excel matching old summary workbook exactly"""
     output = io.BytesIO()
     
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         
-        # ========== SUMMARY SHEET (ITC at Risk removed) ==========
-        summary_data = [
-            ['Reconciliation Summary', ''],
-            ['', ''],
-            ['Particulars', 'Value'],
-            ['ITC - Books', r['summary']['ITC_Books']],
-            ['ITC - GSTR-2B', r['summary']['ITC_GSTR']],
-            ['Difference', abs(r['summary']['ITC_Diff'])],
-            ['', ''],
-            ['Match %', r['summary']['Match_%']],
-            ['', ''],
-            ['Total Books', r['summary']['Total_Books']],
-            ['Total GSTR', r['summary']['Total_GSTR']],
-            ['Matched', r['summary']['Matched']],
-            ['Tax Diff', r['summary']['Tax_Diff']],
-            ['Missing 2B', r['summary']['Missing_2B']],
-            ['Missing Books', r['summary']['Missing_Books']],
-        ]
-        summary_df = pd.DataFrame(summary_data)
-        summary_df.to_excel(writer, sheet_name='Summary', index=False, header=False)
+        # 1. Summary Sheet (professional MIS report style)
+        create_summary_sheet_professional(writer, r)
         
-        workbook = writer.book
-        ws_summary = writer.sheets['Summary']
-        
-        header_format = workbook.add_format({'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'border': 1, 'align': 'center', 'font_name': 'Calibri', 'font_size': 10})
-        number_format = workbook.add_format({'num_format': '#,##0.00', 'border': 1, 'align': 'right', 'font_name': 'Calibri', 'font_size': 10})
-        integer_format = workbook.add_format({'num_format': '#,##0', 'border': 1, 'align': 'right', 'font_name': 'Calibri', 'font_size': 10})
-        text_format = workbook.add_format({'border': 1, 'align': 'left', 'font_name': 'Calibri', 'font_size': 10})
-        
-        ws_summary.write(2, 0, 'Particulars', header_format)
-        ws_summary.write(2, 1, 'Value', header_format)
-        
-        for row_idx in range(3, len(summary_data)):
-            val = summary_data[row_idx][1]
-            if row_idx in [3,4,5,7]:  # ITC rows and Match %
-                ws_summary.write(row_idx, 1, float(val) if isinstance(val, (int, float)) else 0, number_format)
-            elif row_idx in [9,10,11,12,13,14]:  # Count rows
-                ws_summary.write(row_idx, 1, int(val) if isinstance(val, (int, float)) else 0, integer_format)
-            else:
-                ws_summary.write(row_idx, 1, str(val) if val else '', text_format)
-        
-        ws_summary.set_column(0, 0, 20)
-        ws_summary.set_column(1, 1, 18)
-        ws_summary.freeze_panes(1, 0)
-        
-        # ========== MONTH-WISE SUMMARY SHEET ==========
+        # 2. Month-wise Summary (compact, centered, balanced)
         if not month_summary.empty:
-            ms_display = month_summary.copy()
-            ms_display["Month"] = ms_display["Month"].apply(
-                lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
-            )
-            ms_display.to_excel(writer, sheet_name='Month-wise Summary', index=False)
-            apply_professional_formatting(writer, 'Month-wise Summary', ms_display, list(ms_display.columns), include_title=False)
+            create_monthwise_sheet_professional(writer, month_summary)
         
-        # ========== BOOKS SHEET ==========
-        if not books_raw.empty:
-            books_export = books_raw.copy()
-            books_export['Invoice_Date'] = pd.to_datetime(books_export['Invoice_Date'], errors='coerce')
-            books_export.to_excel(writer, sheet_name='Books', index=False)
-            apply_professional_formatting(writer, 'Books', books_export, list(books_export.columns), include_title=False)
-        
-        # ========== GSTR-2B SHEET ==========
-        if not gstr_raw.empty:
-            gstr_export = gstr_raw.copy()
-            gstr_export['Invoice_Date'] = pd.to_datetime(gstr_export['Invoice_Date'], errors='coerce')
-            gstr_export.to_excel(writer, sheet_name='GSTR-2B', index=False)
-            apply_professional_formatting(writer, 'GSTR-2B', gstr_export, list(gstr_export.columns), include_title=False)
-        
-        # ========== MISSING IN 2B SHEET ==========
+        # 3. Missing in 2B
         if not r.get("missing_2b", pd.DataFrame()).empty:
             m2b = r["missing_2b"].copy()
             m2b["Invoice_Date"] = pd.to_datetime(m2b["Invoice_Date"], errors='coerce')
             m2b["Supplier"] = m2b["GSTIN"].map(trade_name_map).fillna(m2b["Trade_Name"])
             m2b_export = m2b[["GSTIN", "Supplier", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]]
-            m2b_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "TOTAL_TAX"]
-            m2b_export.to_excel(writer, sheet_name='Missing in 2B', index=False)
-            apply_professional_formatting(writer, 'Missing in 2B', m2b_export, list(m2b_export.columns), include_title=False)
+            m2b_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "ITC"]
+            create_data_sheet_professional(writer, "Missing in 2B", m2b_export, "Invoices Missing in GSTR-2B")
         
-        # ========== MISSING IN BOOKS SHEET ==========
+        # 4. Missing in Books
         if not r.get("missing_books", pd.DataFrame()).empty:
             mb = r["missing_books"].copy()
             mb["Invoice_Date"] = pd.to_datetime(mb["Invoice_Date"], errors='coerce')
             mb["Supplier"] = mb["GSTIN"].map(trade_name_map).fillna(mb["Trade_Name"])
             mb_export = mb[["GSTIN", "Supplier", "Invoice_No", "Invoice_Date", "Taxable_Value", "TOTAL_TAX"]]
-            mb_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "TOTAL_TAX"]
-            mb_export.to_excel(writer, sheet_name='Missing in Books', index=False)
-            apply_professional_formatting(writer, 'Missing in Books', mb_export, list(mb_export.columns), include_title=False)
+            mb_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "ITC"]
+            create_data_sheet_professional(writer, "Missing in Books", mb_export, "Invoices Missing in Books")
         
-        # ========== SUPPLIER WISE ITC SUMMARY ==========
-        supplier_summary = create_supplier_wise_summary(books_raw, gstr_raw, trade_name_map)
-        if not supplier_summary.empty:
-            supplier_summary.to_excel(writer, sheet_name='Supplier Wise ITC Summary', index=False)
-            apply_professional_formatting(writer, 'Supplier Wise ITC Summary', supplier_summary, list(supplier_summary.columns), include_title=False)
+        # 5. Tax Differences
+        if not r.get("tax_diff", pd.DataFrame()).empty:
+            td = r["tax_diff"].copy()
+            create_data_sheet_professional(writer, "Tax Differences", td, "Invoices with Tax Differences")
         
-        # ========== SUPPLIER DRILL DOWN ==========
-        supplier_drill = create_supplier_drill_down(r, trade_name_map, detail_df)
-        if not supplier_drill.empty:
-            supplier_drill.to_excel(writer, sheet_name='Supplier Drill Down', index=False)
-            apply_professional_formatting(writer, 'Supplier Drill Down', supplier_drill, list(supplier_drill.columns), include_title=False)
+        # 6. All Invoices
+        if not detail_df.empty:
+            detail_export = detail_df.copy()
+            if "Date" in detail_export.columns:
+                detail_export["Date"] = pd.to_datetime(detail_export["Date"], errors='coerce')
+            create_data_sheet_professional(writer, "All Invoices", detail_export, "All Reconciliation Details")
         
-        # ========== MONTHLY SHEETS ==========
-        monthly_sheets = create_monthly_sheets_detail(books_raw, gstr_raw, trade_name_map, r)
-        for month_name, month_df in monthly_sheets.items():
-            if not month_df.empty and len(month_df) > 0:
-                sheet_name = month_name[:31]
-                month_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                apply_professional_formatting(writer, sheet_name, month_df, list(month_df.columns), include_title=False)
+        # 7. Books Raw
+        if not books_raw.empty:
+            books_export = books_raw.copy()
+            if "Invoice_Date" in books_export.columns:
+                books_export["Invoice_Date"] = pd.to_datetime(books_export["Invoice_Date"], errors='coerce')
+            create_data_sheet_professional(writer, "Books", books_export, "Books Data")
         
-        # ========== NO ITC SHEET ==========
+        # 8. GSTR-2B Raw
+        if not gstr_raw.empty:
+            gstr_export = gstr_raw.copy()
+            if "Invoice_Date" in gstr_export.columns:
+                gstr_export["Invoice_Date"] = pd.to_datetime(gstr_export["Invoice_Date"], errors='coerce')
+            create_data_sheet_professional(writer, "GSTR-2B", gstr_export, "GSTR-2B Data")
+        
+        # 9. Zero ITC
         if not r.get("no_itc", pd.DataFrame()).empty:
             ni = r["no_itc"].copy()
             ni["Invoice_Date"] = pd.to_datetime(ni["Invoice_Date"], errors='coerce')
@@ -1155,17 +1221,9 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
             ni_export.columns = ["GSTIN", "Supplier", "Invoice No", "Invoice Date", "Taxable Value", "Invoice Value"]
             ni_export = ni_export[ni_export["Invoice Value"].astype(float) > 0]
             if not ni_export.empty:
-                ni_export.to_excel(writer, sheet_name='NO ITC', index=False)
-                apply_professional_formatting(writer, 'NO ITC', ni_export, list(ni_export.columns), include_title=False)
+                create_data_sheet_professional(writer, "Zero ITC", ni_export, "Zero ITC Invoices")
         
-        # ========== TAX DIFFERENCES SHEET ==========
-        if not r.get("tax_diff", pd.DataFrame()).empty:
-            td = r["tax_diff"].copy()
-            td_export = td[[c for c in td.columns if c not in ['TAX_MATCH']]]
-            td_export.to_excel(writer, sheet_name='Tax Differences', index=False)
-            apply_professional_formatting(writer, 'Tax Differences', td_export, list(td_export.columns), include_title=False)
-        
-        # ========== DATA ISSUES SHEET ==========
+        # 10. Data Issues
         all_issues_local = r["issues"].copy() if not r["issues"].empty else pd.DataFrame()
         if "duplicate_issues" in r and not r["duplicate_issues"].empty:
             all_issues_local = pd.concat([x for x in [all_issues_local, r["duplicate_issues"]] if not x.empty], ignore_index=True)
@@ -1174,8 +1232,7 @@ def export_to_excel_formatted(r, detail_df, month_summary, trade_name_map, books
             issues_export = all_issues_local.copy()
             if "Invoice_Date" in issues_export.columns:
                 issues_export["Invoice_Date"] = pd.to_datetime(issues_export["Invoice_Date"], errors='coerce')
-            issues_export.to_excel(writer, sheet_name='Data Issues', index=False)
-            apply_professional_formatting(writer, 'Data Issues', issues_export, list(issues_export.columns), include_title=False)
+            create_data_sheet_professional(writer, "Data Issues", issues_export, "Data Quality Issues")
     
     output.seek(0)
     return output.getvalue()
@@ -1187,7 +1244,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 col_dl1, col_dl2 = st.columns(2)
 
 with col_dl1:
-    excel_data = export_to_excel_formatted(
+    excel_data = export_to_excel_professional(
         r, detail_df, month_summary, trade_name_map,
         r.get("books_raw", pd.DataFrame()),
         r.get("gstr_raw", pd.DataFrame())
