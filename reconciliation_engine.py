@@ -1,6 +1,6 @@
 """
-GST Reconciliation Engine  v7.4
-Fixed: Level 2 no longer filters out rows before Level 3 gets chance to process
+GST Reconciliation Engine  v7.5
+Fixed: Grouping normalization - only removes special characters, no numeric extraction
 """
 
 import pandas as pd
@@ -333,35 +333,39 @@ def create_trade_name_mapping(gstr_df, books_df):
                 if g and n: m[g]=n
     return m
 
-# ── group invoices with normalized invoice numbers ───────────────────────────
+# ── group invoices with normalized invoice numbers (FIXED - NO NUMERIC EXTRACTION) ──
 
 def normalize_invoice_for_grouping(inv: str) -> str:
     """
     Normalize invoice number for grouping purposes.
-    This is more aggressive than matching normalization to ensure
-    same logical invoices are grouped together before reconciliation.
+    ONLY removes special characters - preserves digits and letters.
+    Numeric extraction happens ONLY in Level 3 matching.
+    
+    Examples:
+        SUN-INV/011  ->  SUNINV011
+        011          ->  011
+        INV/001      ->  INV001
     """
     if not inv:
         return ''
     s = str(inv).strip().upper()
-    digits = re.sub(r'\D', '', s)
-    if digits:
-        return str(int(digits))
-    return re.sub(r'[/\\\-_.\\s|,.]', '', s)
+    # ONLY remove special characters - keep all alphanumeric
+    return re.sub(r'[^A-Z0-9]', '', s)
 
 def group_invoices(df):
     """
     Group invoices using normalized invoice numbers to ensure
-    invoices like 'SUN-INV/011' and '011' are grouped together.
+    invoices like 'SUN-INV/011' and 'SUNINV011' are grouped together.
     
-    Does NOT include Invoice_Date in grouping because same invoice
-    may have different dates in GSTR-2B vs Books.
+    INCLUDES Invoice_Date in grouping to prevent cross-month false matches.
+    Grouping only removes special characters - no numeric extraction.
     """
     if df.empty:
         return df
     
     df = df.copy()
     
+    # Create normalized invoice number for grouping (only removes special chars)
     df['_norm_inv_for_grouping'] = df['Invoice_No'].apply(
         lambda x: normalize_invoice_for_grouping(_s(x))
     )
@@ -369,16 +373,16 @@ def group_invoices(df):
     sc = [c for c in ['Taxable_Value', 'CGST', 'SGST', 'IGST', 'CESS', 'TOTAL_TAX', 'Invoice_Value'] 
           if c in df.columns]
     
-    grouped = df.groupby(['GSTIN', '_norm_inv_for_grouping'], as_index=False).agg({
+    # Group by GSTIN + Invoice_Date + normalized invoice number
+    grouped = df.groupby(['GSTIN', 'Invoice_Date', '_norm_inv_for_grouping'], as_index=False).agg({
         **{col: 'sum' for col in sc},
         'Trade_Name': lambda x: next((v for v in x if v and str(v).strip()), ''),
-        'Invoice_No': lambda x: next((v for v in x if v and str(v).strip()), ''),
-        'Invoice_Date': lambda x: next((v for v in x if pd.notna(v)), pd.NaT)
+        'Invoice_No': lambda x: next((v for v in x if v and str(v).strip()), '')
     })
     
     grouped = grouped.drop(columns=['_norm_inv_for_grouping'])
     
-    logger.info(f'Grouped {len(df)} → {len(grouped)}')
+    logger.info(f'Grouped {len(df)} → {len(grouped)} (grouping only removes special chars)')
     return grouped
 
 # ── detect duplicates ─────────────────────────────────────────────────────────
@@ -408,7 +412,7 @@ def detect_duplicate_invoices(df, source):
     
     return dedup, dr, (pd.DataFrame(di) if di else pd.DataFrame())
 
-# ── 3-level matching ──────────────────────────────────────────────────────────
+# ── 3-level matching (WITH DATE in Level 2 and Level 3) ──────────────────────
 
 def _normalize_invoice_for_level2(inv: str) -> str:
     """
@@ -490,16 +494,17 @@ def level1_strict_match(g, b, tol):
 
 def level2_normalized_match(g, b, tol):
     """
-    LEVEL 2 — NORMALIZED MATCH
+    LEVEL 2 — NORMALIZED MATCH (WITH DATE)
     Conditions:
         - GSTIN same
+        - Invoice Date same
         - Normalized invoice number (alphanumeric, special chars removed)
     
-    Key: GSTIN + normalized_invoice_no
+    Key: GSTIN + Invoice_Date + normalized_invoice_no
     Guard: TOTAL_TAX within tolerance
     
     FIXED: Removed duplicate-filtering block that was preventing rows from
-    reaching Level 3 matching.
+    reaching Level 3 matching. Now includes Invoice_Date in key.
     """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
@@ -511,13 +516,11 @@ def level2_normalized_match(g, b, tol):
     g['NK'] = [_normalize_invoice_for_level2(_s(r['Invoice_No'])) for _, r in g.iterrows()]
     b['NK'] = [_normalize_invoice_for_level2(_s(r['Invoice_No'])) for _, r in b.iterrows()]
 
-    # Create composite key: GSTIN + normalized_invoice (NO DATE)
-    g['NK'] = [_key(r['GSTIN'], r['NK']) for _, r in g.iterrows()]
-    b['NK'] = [_key(r['GSTIN'], r['NK']) for _, r in b.iterrows()]
+    # Create composite key: GSTIN + Invoice_Date + normalized_invoice
+    g['NK'] = [_key(r['GSTIN'], r['Invoice_Date'], r['NK']) for _, r in g.iterrows()]
+    b['NK'] = [_key(r['GSTIN'], r['Invoice_Date'], r['NK']) for _, r in b.iterrows()]
 
-    # FIXED: Removed duplicate-filtering block
-    # Previously this was removing rows before Level 3 could process them
-    # Now we keep all rows for potential matching at Level 3
+    # No duplicate filtering - keep all rows for Level 3
     g_dups = pd.DataFrame()
     b_dups = pd.DataFrame()
 
@@ -543,9 +546,10 @@ def level2_normalized_match(g, b, tol):
     if not matched.empty:
         for _, row in matched.iterrows():
             gstin = _s(row.get('GSTIN_2B', row.get('GSTIN', '')))
+            inv_date = row.get('Invoice_Date_2B', row.get('Invoice_Date', ''))
             inv = _s(row.get('Invoice_No_2B', row.get('Invoice_No', '')))
             norm_inv = _normalize_invoice_for_level2(inv)
-            consumed_nks.add(_key(gstin, norm_inv))
+            consumed_nks.add(_key(gstin, inv_date, norm_inv))
 
     g_remaining = pd.concat([
         g[~g['NK'].isin(consumed_nks)].drop(columns=['NK'], errors='ignore'),
@@ -562,12 +566,13 @@ def level2_normalized_match(g, b, tol):
 
 def level3_numeric_core_match(g, b, tol):
     """
-    LEVEL 3 — NUMERIC CORE FALLBACK
+    LEVEL 3 — NUMERIC CORE FALLBACK (WITH DATE)
     Conditions:
         - GSTIN same
+        - Invoice Date same
         - Numeric core (longest digit sequence, leading zeros removed)
     
-    Key: GSTIN + numeric_core
+    Key: GSTIN + Invoice_Date + numeric_core
     """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
@@ -579,7 +584,7 @@ def level3_numeric_core_match(g, b, tol):
         core = _normalize_invoice_for_level3(_s(row['Invoice_No']))
         if not core:
             return ''
-        return _key(row['GSTIN'], core)
+        return _key(row['GSTIN'], row['Invoice_Date'], core)
 
     g['CK'] = [_core_key(r) for _, r in g.iterrows()]
     b['CK'] = [_core_key(r) for _, r in b.iterrows()]
