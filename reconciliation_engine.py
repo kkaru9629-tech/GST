@@ -1,7 +1,6 @@
 """
-GST Reconciliation Engine  v7.3
-Fixed: Grouping now includes Invoice_Date to be consistent with matching levels
-Level 2 and Level 3 matching include Invoice Date as required
+GST Reconciliation Engine  v7.4
+Fixed: Level 2 no longer filters out rows before Level 3 gets chance to process
 """
 
 import pandas as pd
@@ -60,7 +59,7 @@ def normalize_invoice_number(inv: str) -> str:
     s = str(inv).strip().upper()
     digits = re.sub(r'\D', '', s)
     if digits:
-        return str(int(digits))  # remove leading zeros
+        return str(int(digits))
     return re.sub(r'[/\\\-_.\\s|,]', '', s)
 
 def extract_numeric_core(inv:str)->str:
@@ -334,7 +333,7 @@ def create_trade_name_mapping(gstr_df, books_df):
                 if g and n: m[g]=n
     return m
 
-# ── group invoices with normalized invoice numbers (FIXED - INCLUDES DATE) ───
+# ── group invoices with normalized invoice numbers ───────────────────────────
 
 def normalize_invoice_for_grouping(inv: str) -> str:
     """
@@ -345,12 +344,9 @@ def normalize_invoice_for_grouping(inv: str) -> str:
     if not inv:
         return ''
     s = str(inv).strip().upper()
-    # Extract all digits
     digits = re.sub(r'\D', '', s)
     if digits:
-        # Remove leading zeros by converting to int then back to string
         return str(int(digits))
-    # If no digits, return the cleaned string
     return re.sub(r'[/\\\-_.\\s|,.]', '', s)
 
 def group_invoices(df):
@@ -358,15 +354,14 @@ def group_invoices(df):
     Group invoices using normalized invoice numbers to ensure
     invoices like 'SUN-INV/011' and '011' are grouped together.
     
-    FIXED: Now includes Invoice_Date in grouping to be consistent with
-    Level 1, Level 2, and Level 3 matching requirements where date must match.
+    Does NOT include Invoice_Date in grouping because same invoice
+    may have different dates in GSTR-2B vs Books.
     """
     if df.empty:
         return df
     
     df = df.copy()
     
-    # Create normalized invoice number for grouping
     df['_norm_inv_for_grouping'] = df['Invoice_No'].apply(
         lambda x: normalize_invoice_for_grouping(_s(x))
     )
@@ -374,29 +369,21 @@ def group_invoices(df):
     sc = [c for c in ['Taxable_Value', 'CGST', 'SGST', 'IGST', 'CESS', 'TOTAL_TAX', 'Invoice_Value'] 
           if c in df.columns]
     
-    # FIXED: Group by GSTIN + Invoice_Date + normalized invoice number
-    # This ensures invoices are grouped properly before matching stages
-    grouped = df.groupby(['GSTIN', 'Invoice_Date', '_norm_inv_for_grouping'], as_index=False).agg({
+    grouped = df.groupby(['GSTIN', '_norm_inv_for_grouping'], as_index=False).agg({
         **{col: 'sum' for col in sc},
         'Trade_Name': lambda x: next((v for v in x if v and str(v).strip()), ''),
-        'Invoice_No': lambda x: next((v for v in x if v and str(v).strip()), '')  # Keep one raw invoice number
+        'Invoice_No': lambda x: next((v for v in x if v and str(v).strip()), ''),
+        'Invoice_Date': lambda x: next((v for v in x if pd.notna(v)), pd.NaT)
     })
     
     grouped = grouped.drop(columns=['_norm_inv_for_grouping'])
     
-    logger.info(f'Grouped {len(df)} → {len(grouped)} (using GSTIN + Invoice_Date + normalized invoice)')
+    logger.info(f'Grouped {len(df)} → {len(grouped)}')
     return grouped
 
-# ── detect duplicates with normalized invoice numbers and value check ─────────
+# ── detect duplicates ─────────────────────────────────────────────────────────
 
 def detect_duplicate_invoices(df, source):
-    """
-    Detect duplicates using normalized invoice numbers and invoice value
-    to avoid false positives where same normalized number has different amounts.
-    
-    FIXED: Added Invoice_Value to duplicate detection to prevent
-    valid invoices from being incorrectly removed.
-    """
     if df.empty:
         return df, pd.DataFrame(), pd.DataFrame()
     
@@ -404,25 +391,19 @@ def detect_duplicate_invoices(df, source):
     dt['GSTIN'] = dt['GSTIN'].apply(lambda v: '' if (v is None or (isinstance(v, float) and np.isnan(v))) else str(v).strip())
     dt['Invoice_No'] = dt['Invoice_No'].apply(lambda v: '' if (v is None or (isinstance(v, float) and np.isnan(v))) else str(v).strip())
     
-    # Create normalized version for duplicate detection
     dt['_norm_dup'] = dt['Invoice_No'].apply(lambda x: normalize_invoice_for_grouping(_s(x)))
     
-    # FIXED: Check duplicates on GSTIN + normalized invoice number + Invoice_Value
-    # This prevents removing valid invoices that happen to have same normalized number but different values
     mask = dt.duplicated(subset=['GSTIN', '_norm_dup', 'Invoice_Value'], keep=False)
     dr = df[mask].copy()
     
     label = 'Duplicate Invoice in Books' if source == 'books' else 'Duplicate Invoice in GSTR-2B'
     di = [{**_row_to_issue(r), 'Issue': label, 'Source': source} for _, r in dr.iterrows()]
     
-    # Deduplicate: keep first occurrence based on normalized invoice number + value
     dedup = df[~mask].copy()
     if not dr.empty:
         dt_dedup = dt[~mask].copy()
-        # Keep first occurrence of each normalized invoice number + value combination from duplicates
         first_dups = dt[mask].drop_duplicates(subset=['GSTIN', '_norm_dup', 'Invoice_Value'], keep='first')
         first_dups = first_dups.drop(columns=['_norm_dup'])
-        # Merge back
         dedup = pd.concat([dt_dedup.drop(columns=['_norm_dup']), first_dups], ignore_index=True)
     
     return dedup, dr, (pd.DataFrame(di) if di else pd.DataFrame())
@@ -432,19 +413,15 @@ def detect_duplicate_invoices(df, source):
 def _normalize_invoice_for_level2(inv: str) -> str:
     """
     Normalize invoice number for Level 2 matching.
-    Removes special characters, spaces, brackets, dots, etc.
-    Keeps only alphanumeric characters (A-Z, 0-9) in uppercase.
+    Removes special characters, keeps only alphanumeric (A-Z, 0-9).
     
     Examples:
         SUN/2025-68  ->  SUN202568
-        SUN202568    ->  SUN202568
         INV/001      ->  INV001
-        01-AB/2      ->  01AB2
     """
     if not inv:
         return ''
     s = str(inv).strip().upper()
-    # Remove all non-alphanumeric characters (keep only A-Z and 0-9)
     normalized = re.sub(r'[^A-Z0-9]', '', s)
     return normalized
 
@@ -456,17 +433,12 @@ def _normalize_invoice_for_level3(inv: str) -> str:
     
     Examples:
         SUN-INV/020  ->  '20'
-        020          ->  '20'
-        INV/007      ->  '7'
-        00123        ->  '123'
-        ABC6089      ->  '6089'
+        011          ->  '11'
     """
     if not inv:
         return ''
-    # Extract all digits
     digits = re.sub(r'\D', '', str(inv).strip())
     if digits:
-        # Convert to int to remove leading zeros, then back to string
         return str(int(digits))
     return ''
 
@@ -474,8 +446,7 @@ def _normalize_invoice_for_level3(inv: str) -> str:
 def level1_strict_match(g, b, tol):
     """
     LEVEL 1 — STRICT MATCH
-    Key  : GSTIN + exact Invoice_No + Invoice_Date
-    Guard: TOTAL_TAX within tolerance
+    Key: GSTIN + exact Invoice_No + Invoice_Date
     """
     g = g.copy()
     b = b.copy()
@@ -493,16 +464,13 @@ def level1_strict_match(g, b, tol):
     bm = b[b['K'].isin(ks)].copy()
     merged = pd.merge(gm, bm, on='K', suffixes=('_2B', '_Books')).drop(columns=['K'], errors='ignore')
 
-    # Tax tolerance guard
     merged['TAX_DIFF'] = merged['TOTAL_TAX_2B'].apply(_f) - merged['TOTAL_TAX_Books'].apply(_f)
     matched = merged[merged['TAX_DIFF'].abs() <= tol].copy()
     unmatched = merged[merged['TAX_DIFF'].abs() > tol].copy()
 
-    # Rows that failed tax guard go back into unmatched pools
     failed_gkeys = set()
     failed_bkeys = set()
     if not unmatched.empty:
-        # Reconstruct original keys for failed rows
         for _, row in unmatched.iterrows():
             k_2b = _key(row.get('GSTIN_2B', row.get('GSTIN','')),
                         row.get('Invoice_No_2B', row.get('Invoice_No','')),
@@ -522,18 +490,16 @@ def level1_strict_match(g, b, tol):
 
 def level2_normalized_match(g, b, tol):
     """
-    LEVEL 2 — NORMALIZED MATCH (UPDATED)
+    LEVEL 2 — NORMALIZED MATCH
     Conditions:
         - GSTIN same
-        - Invoice Date same
         - Normalized invoice number (alphanumeric, special chars removed)
     
-    Normalization removes: /, *, spaces, brackets, dots, special characters
-    Keeps only A-Z and 0-9 in uppercase.
-    
-    Key  : GSTIN + Invoice_Date + normalized_invoice_no
+    Key: GSTIN + normalized_invoice_no
     Guard: TOTAL_TAX within tolerance
-    Date : NOW compared (booking date vs supplier date must match)
+    
+    FIXED: Removed duplicate-filtering block that was preventing rows from
+    reaching Level 3 matching.
     """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
@@ -541,21 +507,19 @@ def level2_normalized_match(g, b, tol):
     g = g.copy()
     b = b.copy()
 
-    # Normalize invoice numbers for Level 2 (remove special chars, keep alphanumeric)
+    # Normalize invoice numbers
     g['NK'] = [_normalize_invoice_for_level2(_s(r['Invoice_No'])) for _, r in g.iterrows()]
     b['NK'] = [_normalize_invoice_for_level2(_s(r['Invoice_No'])) for _, r in b.iterrows()]
 
-    # Create composite key: GSTIN + Invoice_Date + normalized_invoice
-    g['NK'] = [_key(r['GSTIN'], r['Invoice_Date'], r['NK']) for _, r in g.iterrows()]
-    b['NK'] = [_key(r['GSTIN'], r['Invoice_Date'], r['NK']) for _, r in b.iterrows()]
+    # Create composite key: GSTIN + normalized_invoice (NO DATE)
+    g['NK'] = [_key(r['GSTIN'], r['NK']) for _, r in g.iterrows()]
+    b['NK'] = [_key(r['GSTIN'], r['NK']) for _, r in b.iterrows()]
 
-    # Drop duplicate normalized keys - keep first occurrence, rest go to next level
-    g_dup_mask = g.duplicated(subset=['NK'], keep=False)
-    b_dup_mask = b.duplicated(subset=['NK'], keep=False)
-    g_dups = g[g_dup_mask].drop(columns=['NK'], errors='ignore')
-    b_dups = b[b_dup_mask].drop(columns=['NK'], errors='ignore')
-    g = g[~g_dup_mask].copy()
-    b = b[~b_dup_mask].copy()
+    # FIXED: Removed duplicate-filtering block
+    # Previously this was removing rows before Level 3 could process them
+    # Now we keep all rows for potential matching at Level 3
+    g_dups = pd.DataFrame()
+    b_dups = pd.DataFrame()
 
     ks = set(g['NK']) & set(b['NK'])
     if not ks:
@@ -570,7 +534,6 @@ def level2_normalized_match(g, b, tol):
         suffixes=('_2B', '_Books')
     ).drop(columns=['NK'], errors='ignore')
 
-    # Tax tolerance guard
     merged['TAX_DIFF'] = merged['TOTAL_TAX_2B'].apply(_f) - merged['TOTAL_TAX_Books'].apply(_f)
     matched = merged[merged['TAX_DIFF'].abs() <= tol].copy()
     tax_fail = merged[merged['TAX_DIFF'].abs() > tol].copy()
@@ -580,10 +543,9 @@ def level2_normalized_match(g, b, tol):
     if not matched.empty:
         for _, row in matched.iterrows():
             gstin = _s(row.get('GSTIN_2B', row.get('GSTIN', '')))
-            inv_date = row.get('Invoice_Date_2B', row.get('Invoice_Date', ''))
             inv = _s(row.get('Invoice_No_2B', row.get('Invoice_No', '')))
             norm_inv = _normalize_invoice_for_level2(inv)
-            consumed_nks.add(_key(gstin, inv_date, norm_inv))
+            consumed_nks.add(_key(gstin, norm_inv))
 
     g_remaining = pd.concat([
         g[~g['NK'].isin(consumed_nks)].drop(columns=['NK'], errors='ignore'),
@@ -600,15 +562,12 @@ def level2_normalized_match(g, b, tol):
 
 def level3_numeric_core_match(g, b, tol):
     """
-    LEVEL 3 — NUMERIC CORE FALLBACK (UPDATED)
+    LEVEL 3 — NUMERIC CORE FALLBACK
     Conditions:
         - GSTIN same
-        - Invoice Date same
         - Numeric core (longest digit sequence, leading zeros removed)
     
-    Key  : GSTIN + Invoice_Date + numeric_core
-    Guard: TOTAL_TAX within tolerance
-    Date : NOW compared
+    Key: GSTIN + numeric_core
     """
     if g.empty or b.empty:
         return pd.DataFrame(), g, b, set()
@@ -620,12 +579,11 @@ def level3_numeric_core_match(g, b, tol):
         core = _normalize_invoice_for_level3(_s(row['Invoice_No']))
         if not core:
             return ''
-        return _key(row['GSTIN'], row['Invoice_Date'], core)
+        return _key(row['GSTIN'], core)
 
     g['CK'] = [_core_key(r) for _, r in g.iterrows()]
     b['CK'] = [_core_key(r) for _, r in b.iterrows()]
 
-    # Rows with no numeric core cannot be matched here
     g_no_core = g[g['CK'] == ''].drop(columns=['CK'], errors='ignore')
     b_no_core = b[b['CK'] == ''].drop(columns=['CK'], errors='ignore')
     g = g[g['CK'] != ''].copy()
@@ -637,7 +595,6 @@ def level3_numeric_core_match(g, b, tol):
         b_remaining = pd.concat([b.drop(columns=['CK'], errors='ignore'), b_no_core], ignore_index=True)
         return pd.DataFrame(), g_remaining, b_remaining, set()
 
-    # Build index maps for one-to-one pairing
     gmap = {}
     for idx, row in g[g['CK'].isin(ck)].iterrows():
         gmap.setdefault(row['CK'], []).append(idx)
@@ -658,11 +615,11 @@ def level3_numeric_core_match(g, b, tol):
                 if abs(_f(gr['TOTAL_TAX']) - _f(br['TOTAL_TAX'])) <= tol:
                     gu.add(gi)
                     bu.add(bi)
-                    merged = {f'{c}_2B':   gr[c] for c in gr.index if c != 'CK'}
+                    merged = {f'{c}_2B': gr[c] for c in gr.index if c != 'CK'}
                     merged.update({f'{c}_Books': br[c] for c in br.index if c != 'CK'})
                     merged['TAX_DIFF'] = _f(gr['TOTAL_TAX']) - _f(br['TOTAL_TAX'])
                     rows.append(merged)
-                    break   # one-to-one: move to next GSTR row
+                    break
 
     matched = pd.DataFrame(rows) if rows else pd.DataFrame()
 
@@ -682,35 +639,64 @@ def level3_numeric_core_match(g, b, tol):
 
 def reconcile(gstr_df, books_df, tolerance=1.0):
     logger.info('Starting reconciliation...')
-    go=gstr_df.copy(); bo=books_df.copy()
-    bd,_,bdup = detect_duplicate_invoices(bo,'books')
-    gd,_,gdup = detect_duplicate_invoices(go,'gstr')
+    go = gstr_df.copy()
+    bo = books_df.copy()
+    
+    bd, _, bdup = detect_duplicate_invoices(bo, 'books')
+    gd, _, gdup = detect_duplicate_invoices(go, 'gstr')
+    
     dup_iss = pd.DataFrame()
-    for d in [bdup,gdup]:
-        if not d.empty: dup_iss=pd.concat([dup_iss,d],ignore_index=True)
-    tmap = create_trade_name_mapping(go,bo)
-    gg = group_invoices(gd); bg = group_invoices(bd)
-    m1,gu1,bu1,_ = level1_strict_match(gg,bg,tolerance)
-    m2,gu2,bu2,_ = level2_normalized_match(gu1,bu1,tolerance)
-    m3,gu3,bu3,_ = level3_numeric_core_match(gu2,bu2,tolerance)
-    am = pd.concat([m1,m2,m3],ignore_index=True) if any(not x.empty for x in [m1,m2,m3]) else pd.DataFrame()
+    for d in [bdup, gdup]:
+        if not d.empty:
+            dup_iss = pd.concat([dup_iss, d], ignore_index=True)
+    
+    tmap = create_trade_name_mapping(go, bo)
+    gg = group_invoices(gd)
+    bg = group_invoices(bd)
+    
+    m1, gu1, bu1, _ = level1_strict_match(gg, bg, tolerance)
+    m2, gu2, bu2, _ = level2_normalized_match(gu1, bu1, tolerance)
+    m3, gu3, bu3, _ = level3_numeric_core_match(gu2, bu2, tolerance)
+    
+    am = pd.concat([m1, m2, m3], ignore_index=True) if any(not x.empty for x in [m1, m2, m3]) else pd.DataFrame()
     m2b = bu3.copy() if not bu3.empty else pd.DataFrame()
-    mb  = gu3.copy() if not gu3.empty else pd.DataFrame()
+    mb = gu3.copy() if not gu3.empty else pd.DataFrame()
+    
     if not am.empty:
-        am['TAX_DIFF']  = am['TOTAL_TAX_2B'].apply(_f)-am['TOTAL_TAX_Books'].apply(_f)
-        am['TAX_MATCH'] = am['TAX_DIFF'].abs()<=tolerance
-        matched=am[am['TAX_MATCH']].copy(); tdiff=am[~am['TAX_MATCH']].copy()
-    else: matched=pd.DataFrame(); tdiff=pd.DataFrame()
+        am['TAX_DIFF'] = am['TOTAL_TAX_2B'].apply(_f) - am['TOTAL_TAX_Books'].apply(_f)
+        am['TAX_MATCH'] = am['TAX_DIFF'].abs() <= tolerance
+        matched = am[am['TAX_MATCH']].copy()
+        tdiff = am[~am['TAX_MATCH']].copy()
+    else:
+        matched = pd.DataFrame()
+        tdiff = pd.DataFrame()
+    
     r2b = m2b['TOTAL_TAX'].apply(_f).sum() if not m2b.empty else 0
-    ts  = abs(tdiff[tdiff['TAX_DIFF']<0]['TAX_DIFF'].apply(_f).sum()) if not tdiff.empty and (tdiff['TAX_DIFF']<0).any() else 0
-    ng  = len(gg)
-    summary={'ITC_Books':round(bg['TOTAL_TAX'].apply(_f).sum(),2),
-             'ITC_GSTR':round(gg['TOTAL_TAX'].apply(_f).sum(),2),
-             'ITC_Diff':round(gg['TOTAL_TAX'].apply(_f).sum()-bg['TOTAL_TAX'].apply(_f).sum(),2),
-             'ITC_at_Risk':round(r2b+ts,2),
-             'Match_%':round(len(matched)/ng*100,2) if ng else 0,
-             'Total_Books':len(bg),'Total_GSTR':ng,'Matched':len(matched),
-             'Tax_Diff':len(tdiff),'Missing_2B':len(m2b),'Missing_Books':len(mb)}
+    ts = abs(tdiff[tdiff['TAX_DIFF'] < 0]['TAX_DIFF'].apply(_f).sum()) if not tdiff.empty and (tdiff['TAX_DIFF'] < 0).any() else 0
+    ng = len(gg)
+    
+    summary = {
+        'ITC_Books': round(bg['TOTAL_TAX'].apply(_f).sum(), 2),
+        'ITC_GSTR': round(gg['TOTAL_TAX'].apply(_f).sum(), 2),
+        'ITC_Diff': round(gg['TOTAL_TAX'].apply(_f).sum() - bg['TOTAL_TAX'].apply(_f).sum(), 2),
+        'ITC_at_Risk': round(r2b + ts, 2),
+        'Match_%': round(len(matched) / ng * 100, 2) if ng else 0,
+        'Total_Books': len(bg),
+        'Total_GSTR': ng,
+        'Matched': len(matched),
+        'Tax_Diff': len(tdiff),
+        'Missing_2B': len(m2b),
+        'Missing_Books': len(mb)
+    }
+    
     logger.info(f"Match {summary['Match_%']}%, Risk {summary['ITC_at_Risk']:,.2f}")
-    return {'matched':matched,'tax_diff':tdiff,'missing_2b':m2b,'missing_books':mb,
-            'summary':summary,'trade_name_mapping':tmap,'duplicate_issues':dup_iss}
+    
+    return {
+        'matched': matched,
+        'tax_diff': tdiff,
+        'missing_2b': m2b,
+        'missing_books': mb,
+        'summary': summary,
+        'trade_name_mapping': tmap,
+        'duplicate_issues': dup_iss
+    }
