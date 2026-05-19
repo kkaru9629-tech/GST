@@ -1,6 +1,6 @@
 """
 GST Reconciliation App
-Version: 10.0 — Fixed reporting layer to use reconciliation results
+Version: 10.1 — Professional Summary Report Design (Old Style)
 """
 
 import streamlit as st
@@ -36,38 +36,236 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="GST Reconciliation", layout="wide")
 
+# Professional styling for summary report
 st.markdown("""
 <style>
+    /* Main font */
     .stApp, .stMarkdown, .stText, .stCaption, .stMetric,
     .stTabs [data-baseweb="tab"], button, label, input {
-        font-family: 'Aptos Narrow', 'Aptos', sans-serif !important;
+        font-family: 'Segoe UI', 'Aptos', 'Calibri', sans-serif !important;
     }
+    
+    /* Summary Card Styles - Professional Accounting Look */
+    .summary-container {
+        background: white;
+        border-radius: 8px;
+        padding: 0;
+        margin-bottom: 20px;
+        border: 1px solid #e0e0e0;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    
+    .summary-header {
+        background: #1e3a5f;
+        color: white;
+        padding: 12px 16px;
+        font-weight: 600;
+        font-size: 16px;
+        border-bottom: 1px solid #2c4e7a;
+    }
+    
+    .summary-row {
+        display: flex;
+        border-bottom: 1px solid #f0f0f0;
+        padding: 10px 16px;
+    }
+    
+    .summary-row:last-child {
+        border-bottom: none;
+    }
+    
+    .summary-label {
+        width: 45%;
+        font-weight: 500;
+        color: #333;
+        font-size: 14px;
+    }
+    
+    .summary-value {
+        width: 55%;
+        text-align: right;
+        font-weight: 600;
+        font-size: 15px;
+        color: #1e3a5f;
+    }
+    
+    .summary-value-positive {
+        color: #2e7d32;
+        font-weight: 700;
+    }
+    
+    .summary-value-negative {
+        color: #c62828;
+        font-weight: 700;
+    }
+    
+    .summary-total-row {
+        background: #f8f9fa;
+        display: flex;
+        border-top: 2px solid #1e3a5f;
+        padding: 12px 16px;
+        font-weight: 700;
+    }
+    
+    .summary-total-label {
+        width: 45%;
+        font-size: 15px;
+        font-weight: 700;
+        color: #1e3a5f;
+    }
+    
+    .summary-total-value {
+        width: 55%;
+        text-align: right;
+        font-size: 16px;
+        font-weight: 700;
+        color: #1e3a5f;
+    }
+    
+    /* Insight Cards - Clean and Professional */
     .insight-card {
-        border-radius: 12px; padding: 20px 24px;
-        text-align: center; margin-bottom: 8px;
+        border-radius: 8px;
+        padding: 16px 20px;
+        text-align: center;
+        margin-bottom: 10px;
+        border: 1px solid #e0e0e0;
+        background: white;
+        transition: all 0.2s;
     }
+    
     .insight-card .card-number {
-        font-size: 2.4rem; font-weight: 700; line-height: 1.1;
-        font-family: 'Aptos Narrow', 'Aptos', sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.2;
+        font-family: 'Segoe UI', 'Aptos', sans-serif;
     }
+    
     .insight-card .card-label {
-        font-size: 0.85rem; font-weight: 600; margin-top: 4px;
-        font-family: 'Aptos Narrow', 'Aptos', sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 6px;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+        color: #666;
     }
-    .card-green  { background:#DCFCE7; }
-    .card-green  .card-number, .card-green  .card-label { color:#166534; }
-    .card-red    { background:#FEE2E2; }
-    .card-red    .card-number, .card-red    .card-label { color:#991B1B; }
-    .card-orange { background:#FEF3C7; }
-    .card-orange .card-number, .card-orange .card-label { color:#92400E; }
-    .card-yellow { background:#FFEDD5; }
-    .card-yellow .card-number, .card-yellow .card-label { color:#9A3412; }
+    
+    .card-green { border-top: 3px solid #2e7d32; }
+    .card-green .card-number { color: #2e7d32; }
+    
+    .card-red { border-top: 3px solid #c62828; }
+    .card-red .card-number { color: #c62828; }
+    
+    .card-orange { border-top: 3px solid #ed6c02; }
+    .card-orange .card-number { color: #ed6c02; }
+    
+    .card-yellow { border-top: 3px solid #f9a825; }
+    .card-yellow .card-number { color: #f9a825; }
+    
+    /* Month-wise table styling - Grid/Table format */
+    .month-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        margin: 10px 0;
+    }
+    
+    .month-table th {
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+        padding: 10px 12px;
+        text-align: center;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .month-table td {
+        border: 1px solid #ddd;
+        padding: 8px 12px;
+        text-align: center;
+    }
+    
+    .month-table tr:hover {
+        background-color: #fafafa;
+    }
+    
+    .month-header {
+        font-weight: 600;
+        background-color: #f9f9f9;
+    }
+    
+    /* Dataframe styling */
+    .stDataFrame {
+        border: 1px solid #e0e0e0 !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+    }
+    
+    .stDataFrame table {
+        font-size: 13px !important;
+    }
+    
+    .stDataFrame thead tr th {
+        background: #f5f5f5 !important;
+        font-weight: 600 !important;
+        border-bottom: 1px solid #ddd !important;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        background: #f8f9fa;
+        padding: 6px 6px 0 6px;
+        border-radius: 8px 8px 0 0;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding: 8px 20px;
+        border-radius: 6px 6px 0 0;
+        font-weight: 500;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #1e3a5f !important;
+        color: white !important;
+    }
+    
+    /* Divider */
+    hr {
+        margin: 20px 0;
+        border: none;
+        border-top: 1px solid #e0e0e0;
+    }
+    
+    /* Warning box */
     .warning-box {
-        background-color:#FEF2F2; padding:1rem;
-        border-left:4px solid #DC2626; border-radius:4px; margin:1rem 0;
+        background-color: #fff3e0;
+        border-left: 4px solid #ed6c02;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin: 12px 0;
+        font-size: 13px;
     }
-    .stTabs [data-baseweb="tab-list"] { gap: 2px; }
-    .stTabs [data-baseweb="tab"]      { padding: 8px 16px; }
+    
+    /* Info box */
+    .info-box {
+        background-color: #e3f2fd;
+        border-left: 4px solid #1976d2;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin: 12px 0;
+        font-size: 13px;
+    }
+    
+    /* Success box */
+    .success-box {
+        background-color: #e8f5e9;
+        border-left: 4px solid #2e7d32;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin: 12px 0;
+        font-size: 13px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -225,7 +423,6 @@ def build_detail_df_from_results(matched_df, missing_2b_df, missing_books_df, tr
     # Process matched invoices
     if not matched_df.empty:
         for _, row in matched_df.iterrows():
-            # Get data from either side (prefer 2B for display)
             gstin = row.get("GSTIN_2B") or row.get("GSTIN_Books", "")
             supplier = trade_name_map.get(gstin, row.get("Trade_Name_2B") or row.get("Trade_Name_Books", ""))
             month = row.get("Month_2B") or row.get("Month_Books", "")
@@ -373,7 +570,7 @@ def apply_filters(df: pd.DataFrame, f_gstin: str, f_supplier: str, f_status: lis
     
     return df
 
-# =================== QUICK INSIGHT CARDS =================== #
+# =================== SUMMARY REPORT - PROFESSIONAL STYLE =================== #
 
 st.markdown("## 📊 Reconciliation Summary")
 
@@ -381,20 +578,118 @@ n_files = r.get("n_gstr_files", 1)
 if n_files > 1:
     st.caption(f"Across {n_files} GSTR-2B files: {', '.join(r.get('gstr_fmts', []))}")
 
+# Create two columns for layout
+col_left, col_right = st.columns([1, 1])
+
+with col_left:
+    # Summary Card - Professional boxed style
+    st.markdown("""
+    <div class="summary-container">
+        <div class="summary-header">RECONCILIATION SUMMARY</div>
+        <div class="summary-row">
+            <div class="summary-label">ITC - Books</div>
+            <div class="summary-value">₹ {:,.2f}</div>
+        </div>
+        <div class="summary-row">
+            <div class="summary-label">ITC - GSTR-2B</div>
+            <div class="summary-value">₹ {:,.2f}</div>
+        </div>
+        <div class="summary-row">
+            <div class="summary-label">Difference</div>
+            <div class="summary-value {}">₹ {:,.2f}</div>
+        </div>
+        <div class="summary-row">
+            <div class="summary-label">ITC at Risk</div>
+            <div class="summary-value summary-value-negative">₹ {:,.2f}</div>
+        </div>
+        <div class="summary-total-row">
+            <div class="summary-total-label">Match %</div>
+            <div class="summary-total-value">{:.2f}%</div>
+        </div>
+    </div>
+    """.format(
+        s["ITC_Books"],
+        s["ITC_GSTR"],
+        "summary-value-positive" if s["ITC_Diff"] >= 0 else "summary-value-negative",
+        abs(s["ITC_Diff"]),
+        s["ITC_at_Risk"],
+        s["Match_%"]
+    ), unsafe_allow_html=True)
+
+with col_right:
+    # Counts Card
+    st.markdown("""
+    <div class="summary-container">
+        <div class="summary-header">INVOICE COUNTS</div>
+        <div class="summary-row">
+            <div class="summary-label">Total Books</div>
+            <div class="summary-value">{:,}</div>
+        </div>
+        <div class="summary-row">
+            <div class="summary-label">Total GSTR-2B</div>
+            <div class="summary-value">{:,}</div>
+        </div>
+        <div class="summary-row">
+            <div class="summary-label">✅ Matched</div>
+            <div class="summary-value summary-value-positive">{:,}</div>
+        </div>
+        <div class="summary-row">
+            <div class="summary-label">⚠️ Tax Difference</div>
+            <div class="summary-value summary-value-negative">{:,}</div>
+        </div>
+        <div class="summary-row">
+            <div class="summary-label">❌ Missing in 2B</div>
+            <div class="summary-value summary-value-negative">{:,}</div>
+        </div>
+        <div class="summary-row">
+            <div class="summary-label">📕 Missing in Books</div>
+            <div class="summary-value summary-value-negative">{:,}</div>
+        </div>
+    </div>
+    """.format(
+        s["Total_Books"],
+        s["Total_GSTR"],
+        s["Matched"],
+        s["Tax_Diff"],
+        s["Missing_2B"],
+        s["Missing_Books"]
+    ), unsafe_allow_html=True)
+
+# Quick insight cards (4 across)
+st.markdown("---")
 c1, c2, c3, c4 = st.columns(4)
-cards = [
-    (c1, "card-green",  "✅ Matched",            s["Matched"]),
-    (c2, "card-red",    "❌ Missing in GSTR-2B",  s["Missing_2B"]),
-    (c3, "card-orange", "📕 Missing in Books",    s["Missing_Books"]),
-    (c4, "card-yellow", "⚠️ Tax Difference",      s["Tax_Diff"]),
-]
-for _col, _css, _label, _value in cards:
-    with _col:
-        st.markdown(f"""
-        <div class="insight-card {_css}">
-            <div class="card-number">{_value}</div>
-            <div class="card-label">{_label}</div>
-        </div>""", unsafe_allow_html=True)
+
+with c1:
+    st.markdown("""
+    <div class="insight-card card-green">
+        <div class="card-number">{}</div>
+        <div class="card-label">✅ MATCHED</div>
+    </div>
+    """.format(s["Matched"]), unsafe_allow_html=True)
+
+with c2:
+    st.markdown("""
+    <div class="insight-card card-red">
+        <div class="card-number">{}</div>
+        <div class="card-label">❌ MISSING IN 2B</div>
+    </div>
+    """.format(s["Missing_2B"]), unsafe_allow_html=True)
+
+with c3:
+    st.markdown("""
+    <div class="insight-card card-orange">
+        <div class="card-number">{}</div>
+        <div class="card-label">📕 MISSING IN BOOKS</div>
+    </div>
+    """.format(s["Missing_Books"]), unsafe_allow_html=True)
+
+with c4:
+    st.markdown("""
+    <div class="insight-card card-yellow">
+        <div class="card-number">{}</div>
+        <div class="card-label">⚠️ TAX DIFFERENCES</div>
+    </div>
+    """.format(s["Tax_Diff"]), unsafe_allow_html=True)
 
 # =================== BUILD DATA FROM RECONCILIATION RESULTS =================== #
 
@@ -415,36 +710,40 @@ month_summary = build_month_summary(
     r.get("gstr_raw", pd.DataFrame())
 )
 
-# =================== MONTH-WISE SUMMARY =================== #
+# =================== MONTH-WISE SUMMARY (TABLE FORMAT) =================== #
 
 if not month_summary.empty:
+    st.markdown("---")
     st.markdown("## 📅 Month-wise Summary")
     
-    h0, h1, h2, h3, h4, h5, h6 = st.columns([1.2, 1.4, 1.4, 1.4, 0.8, 0.8, 0.8])
-    h0.markdown("**Month**")
-    h1.markdown("**📚 Books ITC**")
-    h2.markdown("**📊 GSTR ITC**")
-    h3.markdown("**📉 Difference**")
-    h4.markdown("**❌ Miss 2B**")
-    h5.markdown("**📕 Miss Books**")
-    h6.markdown("**✅ Matched**")
-    st.divider()
+    # Convert month format for display
+    month_summary_display = month_summary.copy()
+    month_summary_display["Month"] = month_summary_display["Month"].apply(
+        lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
+    )
     
-    for _, row in month_summary.iterrows():
-        c0, c1, c2, c3, c4, c5, c6 = st.columns([1.2, 1.4, 1.4, 1.4, 0.8, 0.8, 0.8])
-        c0.markdown(f"**{row['Month']}**")
-        c1.markdown(f"{row['Books ITC']:,.2f}")
-        c2.markdown(f"{row['GSTR ITC']:,.2f}")
-        diff_color = "#991B1B" if row["Difference"] < 0 else "#166534"
-        c3.markdown(f"<span style='color:{diff_color}'>{row['Difference']:,.2f}</span>", unsafe_allow_html=True)
-        c4.markdown(str(int(row["Missing 2B"])))
-        c5.markdown(str(int(row["Missing Books"])))
-        c6.markdown(str(int(row["Matched"])))
+    # Style the dataframe for professional table look
+    styled_df = month_summary_display.style.format({
+        "Books ITC": "{:,.2f}",
+        "GSTR ITC": "{:,.2f}",
+        "Difference": "{:,.2f}"
+    }).set_properties(**{
+        'text-align': 'center',
+        'padding': '8px 12px',
+        'font-size': '13px'
+    }).set_table_styles([
+        {'selector': 'thead tr th', 'props': [('background', '#f5f5f5'), ('font-weight', '600'), ('border', '1px solid #ddd'), ('padding', '10px 12px')]},
+        {'selector': 'tbody tr td', 'props': [('border', '1px solid #e0e0e0'), ('padding', '8px 12px')]},
+        {'selector': 'tbody tr:hover', 'props': [('background', '#fafafa')]},
+        {'selector': 'table', 'props': [('border-collapse', 'collapse'), ('width', '100%'), ('border', '1px solid #ddd'), ('border-radius', '8px')]}
+    ])
     
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
     st.caption(f"{len(month_summary)} month(s) of data")
 
 # =================== FILTER CONTROLS =================== #
 
+st.markdown("---")
 st.markdown("### 🔍 Filter Results")
 filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([1, 1, 1, 1])
 
@@ -564,13 +863,13 @@ if not r["no_itc"].empty:
     no_itc_df["Invoice_Date"] = no_itc_df["Invoice_Date"].apply(fmt_date)
     no_itc_df = no_itc_df[no_itc_df["Invoice_Value"].astype(float) > 0]
     if not no_itc_df.empty:
-        st.divider()
+        st.markdown("---")
         st.markdown("## 🟡 Zero ITC Invoices")
         st.dataframe(no_itc_df, use_container_width=True, hide_index=True)
 
 # =================== DOWNLOAD BUTTONS =================== #
 
-st.divider()
+st.markdown("---")
 col_dl1, col_dl2 = st.columns(2)
 
 def export_to_excel(r, detail_df, month_summary, trade_name_map):
