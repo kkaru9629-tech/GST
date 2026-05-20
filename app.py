@@ -44,61 +44,91 @@ st.markdown("""
         font-family: 'Segoe UI', 'Aptos Narrow', 'Calibri', 'Arial', sans-serif !important;
     }
     
-    .summary-card {
-        background: white;
-        border: 1px solid #d0d0d0;
-        border-radius: 4px;
-        margin-bottom: 16px;
-        overflow: hidden;
-    }
-    
-    .summary-card-header {
-        background: #1e3a5f;
-        color: white;
-        padding: 10px 16px;
-        font-weight: 600;
-        font-size: 14px;
-    }
-    
-    .summary-card-row {
+    .dashboard-title {
         display: flex;
-        border-bottom: 1px solid #e8e8e8;
-        padding: 8px 16px;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+        margin: 8px 0 14px 0;
     }
-    
-    .summary-card-label {
-        width: 50%;
-        font-size: 13px;
-        color: #333;
-    }
-    
-    .summary-card-value {
-        width: 50%;
-        text-align: right;
-        font-size: 13px;
-        font-weight: 600;
-        color: #1e3a5f;
-    }
-    
-    .metric-card {
-        background: white;
-        border: 1px solid #d0d0d0;
-        border-radius: 4px;
-        padding: 12px;
-        text-align: center;
-    }
-    
-    .metric-card .number {
+
+    .dashboard-title h2 {
+        margin: 0;
+        color: #17324d;
         font-size: 24px;
         font-weight: 700;
-        color: #1e3a5f;
     }
-    
-    .metric-card .label {
-        font-size: 11px;
-        color: #666;
-        margin-top: 4px;
+
+    .dashboard-subtitle {
+        color: #607080;
+        font-size: 13px;
+    }
+
+    .kpi-card, .count-card {
+        background: #ffffff;
+        border: 1px solid #dbe3ea;
+        border-radius: 6px;
+        padding: 16px 18px;
+        min-height: 104px;
+        box-shadow: 0 1px 2px rgba(23, 50, 77, 0.05);
+    }
+
+    .kpi-card {
+        border-top: 4px solid #1f4e78;
+    }
+
+    .kpi-card.positive {
+        border-top-color: #2e7d32;
+    }
+
+    .kpi-card.warning {
+        border-top-color: #ed6c02;
+    }
+
+    .kpi-label, .count-label {
+        color: #607080;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: .02em;
         text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+
+    .kpi-value {
+        color: #17324d;
+        font-size: 25px;
+        font-weight: 750;
+        line-height: 1.15;
+    }
+
+    .kpi-note {
+        color: #7a8793;
+        font-size: 12px;
+        margin-top: 8px;
+    }
+
+    .count-card {
+        min-height: 88px;
+        border-left: 4px solid #1f4e78;
+    }
+
+    .count-card.good {
+        border-left-color: #2e7d32;
+    }
+
+    .count-card.warn {
+        border-left-color: #ed6c02;
+    }
+
+    .count-card.danger {
+        border-left-color: #c62828;
+    }
+
+    .count-value {
+        color: #17324d;
+        font-size: 24px;
+        font-weight: 750;
+        line-height: 1;
     }
     
     .stDataFrame table {
@@ -187,9 +217,43 @@ def add_month_column(df: pd.DataFrame) -> pd.DataFrame:
         df["Month"] = ""
         return df
     df = df.copy()
-    df["Month"] = pd.to_datetime(df["Invoice_Date"], errors="coerce") \
-                    .dt.to_period("M").astype(str)
+    parsed = pd.to_datetime(df["Invoice_Date"], errors="coerce")
+    df["Month"] = parsed.dt.to_period("M").astype(str)
+    df.loc[parsed.isna(), "Month"] = "Unknown"
     return df
+
+def normalize_report_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep imported rows for reporting, with stable GSTIN and numeric totals."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = df.copy()
+    for col in ["GSTIN", "Trade_Name", "Invoice_No"]:
+        if col not in df.columns:
+            df[col] = ""
+    for col in ["Taxable_Value", "CGST", "SGST", "IGST", "CESS", "TOTAL_TAX", "Invoice_Value"]:
+        if col not in df.columns:
+            df[col] = 0.0
+        df[col] = df[col].apply(strict_numeric_cleaner)
+    df["GSTIN"] = df["GSTIN"].fillna("").astype(str).str.strip().str.upper()
+    df["Trade_Name"] = df["Trade_Name"].fillna("").astype(str).str.strip()
+    df["Invoice_No"] = df["Invoice_No"].fillna("").astype(str).str.strip()
+    return add_month_column(df)
+
+def build_books_report_df(books_clean: pd.DataFrame, no_itc: pd.DataFrame, issues: pd.DataFrame) -> pd.DataFrame:
+    parts = [df for df in [books_clean, no_itc, issues] if df is not None and not df.empty]
+    return normalize_report_df(pd.concat(parts, ignore_index=True, sort=False)) if parts else pd.DataFrame()
+
+def apply_report_totals(summary: dict, books_report: pd.DataFrame, gstr_report: pd.DataFrame) -> dict:
+    summary = summary.copy()
+    books_itc = books_report["TOTAL_TAX"].sum() if not books_report.empty and "TOTAL_TAX" in books_report.columns else 0.0
+    gstr_itc = gstr_report["TOTAL_TAX"].sum() if not gstr_report.empty and "TOTAL_TAX" in gstr_report.columns else 0.0
+    summary["ITC_Books"] = round(float(books_itc), 2)
+    summary["ITC_GSTR"] = round(float(gstr_itc), 2)
+    summary["ITC_Diff"] = round(float(gstr_itc - books_itc), 2)
+    summary["Total_Books"] = len(books_report)
+    summary["Total_GSTR"] = len(gstr_report)
+    summary["Match_%"] = round(summary.get("Matched", 0) / len(gstr_report) * 100, 2) if len(gstr_report) else 0
+    return summary
 
 # =================== PROCESS =================== #
 
@@ -211,14 +275,19 @@ if st.button("🚀 Run Reconciliation", use_container_width=True, type="primary"
                 gstr_clean = pd.concat(gstr_parts, ignore_index=True) if gstr_parts else pd.DataFrame()
 
                 books_clean = add_month_column(books_clean)
-                gstr_clean = add_month_column(gstr_clean)
+                gstr_clean = normalize_report_df(gstr_clean)
+                books_report = build_books_report_df(books_clean, no_itc, issues)
+                gstr_report = normalize_report_df(gstr_clean)
 
                 results = reconcile(gstr_clean, books_clean, tolerance)
+                results["summary"] = apply_report_totals(results["summary"], books_report, gstr_report)
                 results.update({
                     "no_itc": no_itc,
                     "issues": issues,
-                    "books_raw": books_clean,
-                    "gstr_raw": gstr_clean,
+                    "books_raw": books_report,
+                    "gstr_raw": gstr_report,
+                    "books_recon": books_clean,
+                    "gstr_recon": gstr_clean,
                     "books_fmt": books_fmt,
                     "gstr_fmts": [gf.name for gf in gstr_files],
                     "n_gstr_files": len(gstr_files),
@@ -245,6 +314,7 @@ ACTION_MAP = {
     "❌ Missing in GST": "Follow up with supplier",
     "📕 Missing in Books": "Record purchase entry",
     "⚠️ Tax Difference": "Verify invoice values",
+    "⚠️ Date Mismatch": "Verify invoice date",
 }
 
 def add_action_column(df: pd.DataFrame) -> pd.DataFrame:
@@ -259,6 +329,43 @@ def fmt_date(val) -> str:
     except:
         return ""
 
+def same_date(left, right) -> bool:
+    try:
+        ldt = pd.to_datetime(left, errors="coerce")
+        rdt = pd.to_datetime(right, errors="coerce")
+        return pd.notna(ldt) and pd.notna(rdt) and ldt.normalize() == rdt.normalize()
+    except Exception:
+        return False
+
+def is_true_flag(value) -> bool:
+    return value is True or str(value).strip().lower() == "true"
+
+def fmt_month_label(val, fmt="%B %Y") -> str:
+    try:
+        if pd.isna(val) or val in ("", "NaT", "Unknown"):
+            return val or ""
+        return pd.to_datetime(str(val) + "-01", format="%Y-%m-%d").strftime(fmt)
+    except Exception:
+        return str(val)
+
+def month_label_from_row(row) -> str:
+    month = row.get("Month", "")
+    if pd.notna(month) and str(month).strip() not in ("", "NaT", "Unknown"):
+        return fmt_month_label(month)
+    try:
+        date_val = pd.to_datetime(row.get("Date"), errors="coerce")
+        if pd.notna(date_val):
+            return date_val.strftime("%B %Y")
+    except Exception:
+        pass
+    return ""
+
+def autofit_worksheet(worksheet):
+    try:
+        worksheet.autofit()
+    except Exception:
+        pass
+
 # =================== BUILD DETAIL DF FROM RECONCILIATION RESULTS =================== #
 
 def build_detail_df_from_results(matched_df, missing_2b_df, missing_books_df, trade_name_map, tolerance):
@@ -270,10 +377,13 @@ def build_detail_df_from_results(matched_df, missing_2b_df, missing_books_df, tr
             supplier = trade_name_map.get(gstin, row.get("Trade_Name_2B") or row.get("Trade_Name_Books", ""))
             month = row.get("Month_2B") or row.get("Month_Books", "")
             inv_no = row.get("Invoice_No_2B") or row.get("Invoice_No_Books", "")
-            inv_date = row.get("Invoice_Date_2B") or row.get("Invoice_Date_Books")
+            gstr_date = row.get("Invoice_Date_2B")
+            books_date = row.get("Invoice_Date_Books")
+            inv_date = gstr_date or books_date
             itc_books = float(row.get("TOTAL_TAX_Books", 0) or 0)
             itc_gstr = float(row.get("TOTAL_TAX_2B", 0) or 0)
             diff = itc_gstr - itc_books
+            date_mismatch = bool(row.get("DATE_MISMATCH", False)) and not same_date(gstr_date, books_date)
             remark = "✅ Matched" if abs(diff) <= tolerance else "⚠️ Tax Difference"
             
             rows.append({
@@ -286,6 +396,7 @@ def build_detail_df_from_results(matched_df, missing_2b_df, missing_books_df, tr
                 "ITC 2B": itc_gstr,
                 "Difference": diff,
                 "Remarks": remark,
+                "Date Mismatch": date_mismatch,
                 "Action Required": ACTION_MAP.get(remark, "")
             })
     
@@ -408,103 +519,59 @@ def apply_filters(df: pd.DataFrame, f_gstin: str, f_supplier: str, f_status: lis
 
 # =================== SUMMARY REPORT - PROFESSIONAL STYLE =================== #
 
-st.markdown("## Reconciliation Summary")
-
 n_files = r.get("n_gstr_files", 1)
-if n_files > 1:
-    st.caption(f"Across {n_files} GSTR-2B files: {', '.join(r.get('gstr_fmts', []))}")
+file_caption = f"{n_files} GSTR-2B file(s) processed" if n_files > 1 else "Books vs GSTR-2B"
 
-col_left, col_right = st.columns([1, 1])
-
-with col_left:
-    st.markdown(f"""
-    <div class="summary-card">
-        <div class="summary-card-header">RECONCILIATION SUMMARY</div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">ITC - Books</div>
-            <div class="summary-card-value">₹ {s['ITC_Books']:,.2f}</div>
+st.markdown(f"""
+<div style="background:#f6f8fb;border:1px solid #dbe3ea;border-radius:8px;padding:18px;margin:8px 0 18px 0;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;">
+        <div>
+            <div style="font-size:24px;font-weight:750;color:#17324d;line-height:1.1;">Reconciliation Summary</div>
+            <div style="font-size:13px;color:#607080;margin-top:4px;">{file_caption}</div>
         </div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">ITC - GSTR-2B</div>
-            <div class="summary-card-value">₹ {s['ITC_GSTR']:,.2f}</div>
+        <div style="font-size:13px;color:#607080;">Tolerance: &#8377; {tol:,.2f}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:14px;">
+        <div style="background:white;border:1px solid #dbe3ea;border-top:5px solid #2e7d32;border-radius:6px;padding:16px 18px;box-shadow:0 2px 8px rgba(23,50,77,.06);">
+            <div style="font-size:12px;font-weight:700;color:#607080;text-transform:uppercase;letter-spacing:.03em;">ITC - Books</div>
+            <div style="font-size:27px;font-weight:800;color:#17324d;margin-top:8px;">&#8377; {s['ITC_Books']:,.2f}</div>
+            <div style="font-size:12px;color:#7a8793;margin-top:8px;">Purchase register value</div>
         </div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">Difference</div>
-            <div class="summary-card-value" style="color: {'#2e7d32' if s['ITC_Diff'] >= 0 else '#c62828'}">₹ {abs(s['ITC_Diff']):,.2f}</div>
+        <div style="background:white;border:1px solid #dbe3ea;border-top:5px solid #1f4e78;border-radius:6px;padding:16px 18px;box-shadow:0 2px 8px rgba(23,50,77,.06);">
+            <div style="font-size:12px;font-weight:700;color:#607080;text-transform:uppercase;letter-spacing:.03em;">ITC - GSTR-2B</div>
+            <div style="font-size:27px;font-weight:800;color:#17324d;margin-top:8px;">&#8377; {s['ITC_GSTR']:,.2f}</div>
+            <div style="font-size:12px;color:#7a8793;margin-top:8px;">GST portal value</div>
         </div>
-        <div class="summary-card-total">
-            <div class="summary-card-total-label">Match %</div>
-            <div class="summary-card-total-value">{s['Match_%']:.2f}%</div>
+        <div style="background:white;border:1px solid #dbe3ea;border-top:5px solid #ed6c02;border-radius:6px;padding:16px 18px;box-shadow:0 2px 8px rgba(23,50,77,.06);">
+            <div style="font-size:12px;font-weight:700;color:#607080;text-transform:uppercase;letter-spacing:.03em;">Difference</div>
+            <div style="font-size:27px;font-weight:800;color:{'#c62828' if s['ITC_Diff'] < 0 else '#17324d'};margin-top:8px;">&#8377; {s['ITC_Diff']:,.2f}</div>
+            <div style="font-size:12px;color:#7a8793;margin-top:8px;">GSTR-2B minus Books</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
-
-with col_right:
-    st.markdown(f"""
-    <div class="summary-card">
-        <div class="summary-card-header">INVOICE COUNTS</div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">Total Books</div>
-            <div class="summary-card-value">{s['Total_Books']:,}</div>
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;">
+        <div style="background:white;border:1px solid #dbe3ea;border-left:5px solid #1f4e78;border-radius:6px;padding:13px 14px;">
+            <div style="font-size:11px;font-weight:700;color:#607080;text-transform:uppercase;">Invoices in Books</div>
+            <div style="font-size:25px;font-weight:800;color:#17324d;margin-top:7px;">{s['Total_Books']:,}</div>
         </div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">Total GSTR-2B</div>
-            <div class="summary-card-value">{s['Total_GSTR']:,}</div>
+        <div style="background:white;border:1px solid #dbe3ea;border-left:5px solid #1f4e78;border-radius:6px;padding:13px 14px;">
+            <div style="font-size:11px;font-weight:700;color:#607080;text-transform:uppercase;">Invoices in GST</div>
+            <div style="font-size:25px;font-weight:800;color:#17324d;margin-top:7px;">{s['Total_GSTR']:,}</div>
         </div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">✅ Matched</div>
-            <div class="summary-card-value" style="color: #2e7d32">{s['Matched']:,}</div>
+        <div style="background:white;border:1px solid #dbe3ea;border-left:5px solid #c62828;border-radius:6px;padding:13px 14px;">
+            <div style="font-size:11px;font-weight:700;color:#607080;text-transform:uppercase;">Missing in 2B</div>
+            <div style="font-size:25px;font-weight:800;color:#17324d;margin-top:7px;">{s['Missing_2B']:,}</div>
         </div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">⚠️ Tax Difference</div>
-            <div class="summary-card-value" style="color: #ed6c02">{s['Tax_Diff']:,}</div>
+        <div style="background:white;border:1px solid #dbe3ea;border-left:5px solid #c62828;border-radius:6px;padding:13px 14px;">
+            <div style="font-size:11px;font-weight:700;color:#607080;text-transform:uppercase;">Missing in Books</div>
+            <div style="font-size:25px;font-weight:800;color:#17324d;margin-top:7px;">{s['Missing_Books']:,}</div>
         </div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">❌ Missing in 2B</div>
-            <div class="summary-card-value" style="color: #c62828">{s['Missing_2B']:,}</div>
-        </div>
-        <div class="summary-card-row">
-            <div class="summary-card-label">📕 Missing in Books</div>
-            <div class="summary-card-value" style="color: #c62828">{s['Missing_Books']:,}</div>
+        <div style="background:white;border:1px solid #dbe3ea;border-left:5px solid #ed6c02;border-radius:6px;padding:13px 14px;">
+            <div style="font-size:11px;font-weight:700;color:#607080;text-transform:uppercase;">Tax Difference</div>
+            <div style="font-size:25px;font-weight:800;color:#17324d;margin-top:7px;">{s['Tax_Diff']:,}</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
-
-# Metric cards row
-st.markdown("<br>", unsafe_allow_html=True)
-c1, c2, c3, c4 = st.columns(4)
-
-with c1:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="number">{s['Matched']}</div>
-        <div class="label">✅ MATCHED</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with c2:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="number">{s['Missing_2B']}</div>
-        <div class="label">❌ MISSING IN 2B</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with c3:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="number">{s['Missing_Books']}</div>
-        <div class="label">📕 MISSING IN BOOKS</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with c4:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="number">{s['Tax_Diff']}</div>
-        <div class="label">⚠️ TAX DIFFERENCES</div>
-    </div>
-    """, unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
 
 # =================== BUILD DATA =================== #
 
@@ -532,9 +599,7 @@ if not month_summary.empty:
     st.markdown("## Month-wise Summary")
     
     month_summary_display = month_summary.copy()
-    month_summary_display["Month"] = month_summary_display["Month"].apply(
-        lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
-    )
+    month_summary_display["Month"] = month_summary_display["Month"].apply(fmt_month_label)
     
     st.dataframe(month_summary_display, use_container_width=True, hide_index=True)
     st.caption(f"{len(month_summary)} month(s) of data")
@@ -594,7 +659,8 @@ with tabs[0]:
         "Remarks": st.column_config.TextColumn("Remarks", width=160),
         "Action Required": st.column_config.TextColumn("Action Required", width=180),
     }
-    safe_dataframe(filtered_df, column_config=col_config, 
+    filtered_display_df = filtered_df.drop(columns=["Date Mismatch"], errors="ignore")
+    safe_dataframe(filtered_display_df, column_config=col_config,
                    empty_message="No invoices match the current filters.",
                    caption=f"Showing {len(filtered_df)} of {len(detail_df)} invoices")
 
@@ -736,47 +802,23 @@ def create_summary_sheet_exact_match(writer, r):
     worksheet.write(4, 0, 'Difference', label_format)
     worksheet.write(4, 1, r['summary']['ITC_Diff'], value_format)
     
-    # Row 5: ITC at Risk
-    itc_at_risk = r['summary'].get('ITC_at_Risk', 0)
-    worksheet.write(5, 0, 'ITC at Risk', label_format)
-    worksheet.write(5, 1, itc_at_risk, value_format)
-    
-    # Row 6: Match %
-    worksheet.write(6, 0, 'Match %', label_format)
-    worksheet.write(6, 1, r['summary']['Match_%'], value_format)
-    
     # Blank row
-    worksheet.write(7, 0, '', label_format)
+    worksheet.write(5, 0, '', label_format)
     
-    # Row 8: Total Books
-    worksheet.write(8, 0, 'Total Books', label_format)
-    worksheet.write(8, 1, r['summary']['Total_Books'], value_int_format)
+    # Row 6: No of invoices in Books
+    worksheet.write(6, 0, 'No of invoices in Books', label_format)
+    worksheet.write(6, 1, r['summary']['Total_Books'], value_int_format)
     
-    # Row 9: Total GSTR
-    worksheet.write(9, 0, 'Total GSTR', label_format)
-    worksheet.write(9, 1, r['summary']['Total_GSTR'], value_int_format)
-    
-    # Row 10: Matched
-    worksheet.write(10, 0, 'Matched', label_format)
-    worksheet.write(10, 1, r['summary']['Matched'], value_int_format)
-    
-    # Row 11: Tax Diff
-    worksheet.write(11, 0, 'Tax Diff', label_format)
-    worksheet.write(11, 1, r['summary']['Tax_Diff'], value_int_format)
-    
-    # Row 12: Missing 2B
-    worksheet.write(12, 0, 'Missing 2B', label_format)
-    worksheet.write(12, 1, r['summary']['Missing_2B'], value_int_format)
-    
-    # Row 13: Missing Books
-    worksheet.write(13, 0, 'Missing Books', label_format)
-    worksheet.write(13, 1, r['summary']['Missing_Books'], value_int_format)
+    # Row 7: No of invoices in GST
+    worksheet.write(7, 0, 'No of invoices in GST', label_format)
+    worksheet.write(7, 1, r['summary']['Total_GSTR'], value_int_format)
     
     # Set column widths
     worksheet.set_column(0, 0, 22)
     worksheet.set_column(1, 1, 18)
     
     # Freeze pane at A3 (row 3, col 0)
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
@@ -799,7 +841,6 @@ def create_monthwise_summary_exact_match(writer, month_summary):
         'bold': True,
         'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -808,7 +849,6 @@ def create_monthwise_summary_exact_match(writer, month_summary):
     
     money_format = workbook.add_format({
         'num_format': '#,##0.00',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -817,7 +857,6 @@ def create_monthwise_summary_exact_match(writer, month_summary):
     
     int_format = workbook.add_format({
         'num_format': '#,##0',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -825,13 +864,12 @@ def create_monthwise_summary_exact_match(writer, month_summary):
     })
     
     text_format = workbook.add_format({
-        'border': 1,
         'align': 'left',
         'valign': 'vcenter',
         'font_size': 10,
         'font_name': 'Aptos Narrow'
     })
-    
+
     worksheet.set_default_row(18)
     
     # Row 0: Title
@@ -839,9 +877,7 @@ def create_monthwise_summary_exact_match(writer, month_summary):
     
     # Prepare display data with formatted month names (Mar-2026, Apr-2026 format)
     display_df = month_summary.copy()
-    display_df['Month'] = display_df['Month'].apply(
-        lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%b-%Y") if pd.notna(m) and m not in ("", "NaT") else m
-    )
+    display_df['Month'] = display_df['Month'].apply(lambda m: fmt_month_label(m, "%b-%Y"))
     
     # Row 2: Headers (old workbook has headers at row 2)
     headers = list(display_df.columns)
@@ -871,6 +907,7 @@ def create_monthwise_summary_exact_match(writer, month_summary):
         worksheet.set_column(col_idx, col_idx, max_len + 2)
     
     # Freeze pane at A3
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
@@ -893,7 +930,6 @@ def create_books_sheet_exact_match(writer, books_raw):
         'bold': True,
         'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -902,7 +938,6 @@ def create_books_sheet_exact_match(writer, books_raw):
     
     money_format = workbook.add_format({
         'num_format': '#,##0.00',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -911,7 +946,6 @@ def create_books_sheet_exact_match(writer, books_raw):
     
     date_format = workbook.add_format({
         'num_format': 'dd-mmm-yyyy',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -919,13 +953,12 @@ def create_books_sheet_exact_match(writer, books_raw):
     })
     
     text_format = workbook.add_format({
-        'border': 1,
         'align': 'left',
         'valign': 'vcenter',
         'font_size': 10,
         'font_name': 'Aptos Narrow'
     })
-    
+
     worksheet.set_default_row(18)
     
     # Row 0: Title
@@ -971,6 +1004,7 @@ def create_books_sheet_exact_match(writer, books_raw):
         worksheet.set_column(col_idx, col_idx, max_len + 2)
     
     # Freeze pane at A3
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
@@ -993,7 +1027,6 @@ def create_gstr_sheet_exact_match(writer, gstr_raw):
         'bold': True,
         'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1002,7 +1035,6 @@ def create_gstr_sheet_exact_match(writer, gstr_raw):
     
     money_format = workbook.add_format({
         'num_format': '#,##0.00',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1011,7 +1043,6 @@ def create_gstr_sheet_exact_match(writer, gstr_raw):
     
     date_format = workbook.add_format({
         'num_format': 'dd-mmm-yyyy',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1019,7 +1050,6 @@ def create_gstr_sheet_exact_match(writer, gstr_raw):
     })
     
     text_format = workbook.add_format({
-        'border': 1,
         'align': 'left',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1071,6 +1101,7 @@ def create_gstr_sheet_exact_match(writer, gstr_raw):
         worksheet.set_column(col_idx, col_idx, max_len + 2)
     
     # Freeze pane at A3
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
@@ -1094,7 +1125,6 @@ def create_missing_in_2b_sheet_exact_match(writer, r, trade_name_map):
         'bold': True,
         'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1103,7 +1133,6 @@ def create_missing_in_2b_sheet_exact_match(writer, r, trade_name_map):
     
     money_format = workbook.add_format({
         'num_format': '#,##0.00',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1112,7 +1141,6 @@ def create_missing_in_2b_sheet_exact_match(writer, r, trade_name_map):
     
     date_format = workbook.add_format({
         'num_format': 'dd-mmm-yyyy',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1120,7 +1148,6 @@ def create_missing_in_2b_sheet_exact_match(writer, r, trade_name_map):
     })
     
     text_format = workbook.add_format({
-        'border': 1,
         'align': 'left',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1172,6 +1199,7 @@ def create_missing_in_2b_sheet_exact_match(writer, r, trade_name_map):
     worksheet.set_column(5, 5, 12)
     
     # Freeze pane at A3
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
@@ -1195,7 +1223,6 @@ def create_missing_in_books_sheet_exact_match(writer, r, trade_name_map):
         'bold': True,
         'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1204,7 +1231,6 @@ def create_missing_in_books_sheet_exact_match(writer, r, trade_name_map):
     
     money_format = workbook.add_format({
         'num_format': '#,##0.00',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1213,7 +1239,6 @@ def create_missing_in_books_sheet_exact_match(writer, r, trade_name_map):
     
     date_format = workbook.add_format({
         'num_format': 'dd-mmm-yyyy',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1221,7 +1246,6 @@ def create_missing_in_books_sheet_exact_match(writer, r, trade_name_map):
     })
     
     text_format = workbook.add_format({
-        'border': 1,
         'align': 'left',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1272,25 +1296,32 @@ def create_missing_in_books_sheet_exact_match(writer, r, trade_name_map):
     worksheet.set_column(5, 5, 12)
     
     # Freeze pane at A3
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
 def create_supplier_wise_itc_summary_exact_match(writer, r, trade_name_map):
     """Create Supplier Wise ITC Summary sheet EXACTLY matching old workbook"""
-    books_raw = r.get('books_raw', pd.DataFrame())
-    gstr_raw = r.get('gstr_raw', pd.DataFrame())
+    books_raw = normalize_report_df(r.get('books_raw', pd.DataFrame()))
+    gstr_raw = normalize_report_df(r.get('gstr_raw', pd.DataFrame()))
     
     suppliers = set()
     if not books_raw.empty:
-        suppliers.update(books_raw['GSTIN'].unique())
+        suppliers.update(books_raw['GSTIN'].dropna().unique())
     if not gstr_raw.empty:
-        suppliers.update(gstr_raw['GSTIN'].unique())
+        suppliers.update(gstr_raw['GSTIN'].dropna().unique())
     
     rows = []
-    for gstin in suppliers:
+    for gstin in sorted(g for g in suppliers if str(g).strip()):
         supplier_name = trade_name_map.get(gstin, '')
-        books_itc = books_raw[books_raw['GSTIN'] == gstin]['TOTAL_TAX'].sum() if not books_raw.empty else 0
-        gstr_itc = gstr_raw[gstr_raw['GSTIN'] == gstin]['TOTAL_TAX'].sum() if not gstr_raw.empty else 0
+        if not supplier_name and not books_raw.empty:
+            names = books_raw.loc[books_raw['GSTIN'] == gstin, 'Trade_Name'].dropna().astype(str).str.strip()
+            supplier_name = next((n for n in names if n), '')
+        if not supplier_name and not gstr_raw.empty:
+            names = gstr_raw.loc[gstr_raw['GSTIN'] == gstin, 'Trade_Name'].dropna().astype(str).str.strip()
+            supplier_name = next((n for n in names if n), '')
+        books_itc = books_raw.loc[books_raw['GSTIN'] == gstin, 'TOTAL_TAX'].sum() if not books_raw.empty else 0
+        gstr_itc = gstr_raw.loc[gstr_raw['GSTIN'] == gstin, 'TOTAL_TAX'].sum() if not gstr_raw.empty else 0
         diff = gstr_itc - books_itc
         
         rows.append({
@@ -1322,7 +1353,6 @@ def create_supplier_wise_itc_summary_exact_match(writer, r, trade_name_map):
         'bold': True,
         'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1331,7 +1361,6 @@ def create_supplier_wise_itc_summary_exact_match(writer, r, trade_name_map):
     
     money_format = workbook.add_format({
         'num_format': '#,##0.00',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1339,7 +1368,6 @@ def create_supplier_wise_itc_summary_exact_match(writer, r, trade_name_map):
     })
     
     text_format = workbook.add_format({
-        'border': 1,
         'align': 'left',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1372,6 +1400,7 @@ def create_supplier_wise_itc_summary_exact_match(writer, r, trade_name_map):
     worksheet.set_column(4, 4, 15)
     
     # Freeze pane at A3
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
@@ -1394,7 +1423,6 @@ def create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map)
         'bold': True,
         'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1403,7 +1431,6 @@ def create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map)
     
     money_format = workbook.add_format({
         'num_format': '#,##0.00',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1412,7 +1439,6 @@ def create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map)
     
     date_format = workbook.add_format({
         'num_format': 'dd-mmm-yyyy',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1420,37 +1446,38 @@ def create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map)
     })
     
     text_format = workbook.add_format({
-        'border': 1,
         'align': 'left',
         'valign': 'vcenter',
         'font_size': 10,
         'font_name': 'Aptos Narrow'
     })
-    
+
     worksheet.set_default_row(18)
     
+    date_mismatch_format = workbook.add_format({
+        'align': 'left',
+        'valign': 'vcenter',
+        'font_size': 10,
+        'font_name': 'Aptos Narrow',
+        'bg_color': '#FFF2CC'
+    })
+
     # Row 0: Title
-    worksheet.write(0, 0, 'Supplier Drill Down — Invoice Level Details (use Month filter to drill down)', title_format)
+    worksheet.write(0, 0, 'Supplier Drill Down', title_format)
     
     # Prepare data
     drill_data = detail_df.copy()
     if 'Date' in drill_data.columns:
         drill_data['Date'] = pd.to_datetime(drill_data['Date'], errors='coerce')
     
-    # Convert Month to display format
-    if 'Month' in drill_data.columns:
-        drill_data['Month Label'] = drill_data['Month'].apply(
-            lambda m: pd.to_datetime(m + "-01", format="%Y-%m-%d").strftime("%B %Y") if pd.notna(m) and m not in ("", "NaT") else m
-        )
-    
     # Row 2: Headers
-    headers = ['Month Label', 'GSTIN', 'Supplier', 'Invoice No', 'Invoice Date', 'ITC Books', 'ITC 2B', 'Difference', 'Remarks', 'Action Required']
+    headers = ['Month', 'GSTIN', 'Supplier', 'Invoice No', 'Invoice Date', 'ITC Books', 'ITC 2B', 'Difference', 'Remarks', 'Action Required']
     for col_idx, header in enumerate(headers):
         worksheet.write(2, col_idx, header, header_format)
     
     # Data starting at row 3
     for row_idx, (_, row) in enumerate(drill_data.iterrows()):
-        worksheet.write(3 + row_idx, 0, str(row.get('Month Label', '')), text_format)
+        worksheet.write(3 + row_idx, 0, month_label_from_row(row), text_format)
         worksheet.write(3 + row_idx, 1, str(row.get('GSTIN', '')), text_format)
         worksheet.write(3 + row_idx, 2, str(row.get('Supplier', '')), text_format)
         worksheet.write(3 + row_idx, 3, str(row.get('Invoice No', '')), text_format)
@@ -1467,11 +1494,15 @@ def create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map)
         worksheet.write(3 + row_idx, 5, row.get('ITC Books', 0), money_format)
         worksheet.write(3 + row_idx, 6, row.get('ITC 2B', 0), money_format)
         worksheet.write(3 + row_idx, 7, row.get('Difference', 0), money_format)
-        worksheet.write(3 + row_idx, 8, str(row.get('Remarks', '')), text_format)
-        worksheet.write(3 + row_idx, 9, str(row.get('Action Required', '')), text_format)
+        date_mismatch = is_true_flag(row.get('Date Mismatch', False))
+        remarks = 'Date Mismatch' if date_mismatch else str(row.get('Remarks', ''))
+        action_required = 'Verify invoice date' if date_mismatch else str(row.get('Action Required', ''))
+        remark_format = date_mismatch_format if date_mismatch else text_format
+        worksheet.write(3 + row_idx, 8, remarks, remark_format)
+        worksheet.write(3 + row_idx, 9, action_required, text_format)
     
     # Set column widths
-    worksheet.set_column(0, 0, 18)
+    worksheet.set_column(0, 0, 14)
     worksheet.set_column(1, 1, 18)
     worksheet.set_column(2, 2, 35)
     worksheet.set_column(3, 3, 20)
@@ -1483,6 +1514,7 @@ def create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map)
     worksheet.set_column(9, 9, 20)
     
     # Freeze pane at A3
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
@@ -1511,7 +1543,6 @@ def create_no_itc_sheet_exact_match(writer, r):
         'bold': True,
         'font_color': '#FFFFFF',
         'bg_color': '#1F4E78',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1520,7 +1551,6 @@ def create_no_itc_sheet_exact_match(writer, r):
     
     money_format = workbook.add_format({
         'num_format': '#,##0.00',
-        'border': 1,
         'align': 'right',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1529,7 +1559,6 @@ def create_no_itc_sheet_exact_match(writer, r):
     
     date_format = workbook.add_format({
         'num_format': 'dd-mmm-yyyy',
-        'border': 1,
         'align': 'center',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1537,7 +1566,6 @@ def create_no_itc_sheet_exact_match(writer, r):
     })
     
     text_format = workbook.add_format({
-        'border': 1,
         'align': 'left',
         'valign': 'vcenter',
         'font_size': 10,
@@ -1586,21 +1614,16 @@ def create_no_itc_sheet_exact_match(writer, r):
     worksheet.set_column(5, 5, 15)
     
     # Freeze pane at A3
+    autofit_worksheet(worksheet)
     worksheet.freeze_panes(3, 0)
 
 
-def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, tolerance):
+def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, tolerance, detail_df):
     """Create monthly detail sheets (Mar-2026, Apr-2026, etc.) EXACTLY matching old workbook"""
-    books_raw = r.get('books_raw', pd.DataFrame())
-    gstr_raw = r.get('gstr_raw', pd.DataFrame())
-    
-    # Get all months
-    all_months = set()
-    if not books_raw.empty and 'Month' in books_raw.columns:
-        all_months.update(books_raw['Month'].dropna().unique())
-    if not gstr_raw.empty and 'Month' in gstr_raw.columns:
-        all_months.update(gstr_raw['Month'].dropna().unique())
-    all_months = [m for m in all_months if m and m not in ('', 'NaT')]
+    if detail_df.empty or 'Month' not in detail_df.columns:
+        return
+
+    all_months = [m for m in detail_df['Month'].dropna().unique() if m and m not in ('', 'NaT', 'Unknown')]
     
     if not all_months:
         return
@@ -1610,80 +1633,9 @@ def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, toleranc
     # Create detail data for each month
     for month in sorted(all_months):
         month_name = pd.to_datetime(month + '-01', format='%Y-%m-%d').strftime('%b-%Y')
-        
-        rows = []
-        
-        # Missing in GST
-        if not r.get('missing_2b', pd.DataFrame()).empty:
-            m2b = r['missing_2b'].copy()
-            m2b['MonthCheck'] = pd.to_datetime(m2b['Invoice_Date'], errors='coerce').dt.to_period('M').astype(str)
-            m2b_filtered = m2b[m2b['MonthCheck'] == month]
-            for _, row in m2b_filtered.iterrows():
-                rows.append({
-                    'GSTIN': row.get('GSTIN', ''),
-                    'Supplier': trade_name_map.get(row.get('GSTIN', ''), row.get('Trade_Name', '')),
-                    'Invoice No': row.get('Invoice_No', ''),
-                    'Invoice Date': row.get('Invoice_Date'),
-                    'ITC Books': round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'ITC 2B': 0,
-                    'Difference': -round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'Remarks': 'Missing in GST',
-                    'Action Required': 'Follow up with supplier'
-                })
-        
-        # Missing in Books
-        if not r.get('missing_books', pd.DataFrame()).empty:
-            mb = r['missing_books'].copy()
-            mb['MonthCheck'] = pd.to_datetime(mb['Invoice_Date'], errors='coerce').dt.to_period('M').astype(str)
-            mb_filtered = mb[mb['MonthCheck'] == month]
-            for _, row in mb_filtered.iterrows():
-                rows.append({
-                    'GSTIN': row.get('GSTIN', ''),
-                    'Supplier': trade_name_map.get(row.get('GSTIN', ''), row.get('Trade_Name', '')),
-                    'Invoice No': row.get('Invoice_No', ''),
-                    'Invoice Date': row.get('Invoice_Date'),
-                    'ITC Books': 0,
-                    'ITC 2B': round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'Difference': round(float(row.get('TOTAL_TAX', 0)), 2),
-                    'Remarks': 'Missing in Books',
-                    'Action Required': 'Record purchase entry'
-                })
-        
-        # Matched and tax differences
-        if not r.get('matched', pd.DataFrame()).empty:
-            matched = r['matched'].copy()
-            for _, row in matched.iterrows():
-                inv_date = row.get('Invoice_Date_2B') or row.get('Invoice_Date_Books')
-                if pd.notna(inv_date):
-                    try:
-                        inv_month = str(pd.to_datetime(inv_date).to_period('M'))
-                        if inv_month == month:
-                            gstin = row.get('GSTIN_2B') or row.get('GSTIN_Books', '')
-                            itc_books = float(row.get('TOTAL_TAX_Books', 0) or 0)
-                            itc_gstr = float(row.get('TOTAL_TAX_2B', 0) or 0)
-                            diff = itc_gstr - itc_books
-                            if abs(diff) <= tolerance:
-                                remark = 'Matched'
-                                action = 'No action'
-                            else:
-                                remark = 'Tax Difference'
-                                action = 'Verify invoice values'
-                            rows.append({
-                                'GSTIN': gstin,
-                                'Supplier': trade_name_map.get(gstin, row.get('Trade_Name_2B') or row.get('Trade_Name_Books', '')),
-                                'Invoice No': row.get('Invoice_No_2B') or row.get('Invoice_No_Books', ''),
-                                'Invoice Date': inv_date,
-                                'ITC Books': itc_books,
-                                'ITC 2B': itc_gstr,
-                                'Difference': diff,
-                                'Remarks': remark,
-                                'Action Required': action
-                            })
-                    except:
-                        pass
-        
-        if rows:
-            month_df = pd.DataFrame(rows)
+        month_df = detail_df[detail_df['Month'] == month].copy()
+        if not month_df.empty:
+            month_df['Invoice Date'] = pd.to_datetime(month_df.get('Date', ''), errors='coerce')
             
             worksheet = workbook.add_worksheet(month_name)
             
@@ -1698,7 +1650,6 @@ def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, toleranc
                 'bold': True,
                 'font_color': '#FFFFFF',
                 'bg_color': '#1F4E78',
-                'border': 1,
                 'align': 'center',
                 'valign': 'vcenter',
                 'font_size': 10,
@@ -1707,7 +1658,6 @@ def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, toleranc
             
             money_format = workbook.add_format({
                 'num_format': '#,##0.00',
-                'border': 1,
                 'align': 'right',
                 'valign': 'vcenter',
                 'font_size': 10,
@@ -1716,7 +1666,6 @@ def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, toleranc
             
             date_format = workbook.add_format({
                 'num_format': 'dd-mmm-yyyy',
-                'border': 1,
                 'align': 'center',
                 'valign': 'vcenter',
                 'font_size': 10,
@@ -1724,11 +1673,18 @@ def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, toleranc
             })
             
             text_format = workbook.add_format({
-                'border': 1,
                 'align': 'left',
                 'valign': 'vcenter',
                 'font_size': 10,
                 'font_name': 'Aptos Narrow'
+            })
+
+            date_mismatch_format = workbook.add_format({
+                'align': 'left',
+                'valign': 'vcenter',
+                'font_size': 10,
+                'font_name': 'Aptos Narrow',
+                'bg_color': '#FFF2CC'
             })
             
             worksheet.set_default_row(18)
@@ -1743,11 +1699,11 @@ def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, toleranc
             
             # Data starting at row 3
             for row_idx, (_, row) in enumerate(month_df.iterrows()):
-                worksheet.write(3 + row_idx, 0, str(row['GSTIN']), text_format)
-                worksheet.write(3 + row_idx, 1, str(row['Supplier']), text_format)
-                worksheet.write(3 + row_idx, 2, str(row['Invoice No']), text_format)
+                worksheet.write(3 + row_idx, 0, str(row.get('GSTIN', '')), text_format)
+                worksheet.write(3 + row_idx, 1, str(row.get('Supplier', '')), text_format)
+                worksheet.write(3 + row_idx, 2, str(row.get('Invoice No', '')), text_format)
                 
-                if pd.notna(row['Invoice Date']):
+                if pd.notna(row.get('Invoice Date')):
                     try:
                         dt = pd.to_datetime(row['Invoice Date'])
                         worksheet.write_datetime(3 + row_idx, 3, dt.to_pydatetime(), date_format)
@@ -1756,11 +1712,11 @@ def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, toleranc
                 else:
                     worksheet.write(3 + row_idx, 3, "", text_format)
                 
-                worksheet.write(3 + row_idx, 4, row['ITC Books'], money_format)
-                worksheet.write(3 + row_idx, 5, row['ITC 2B'], money_format)
-                worksheet.write(3 + row_idx, 6, row['Difference'], money_format)
-                worksheet.write(3 + row_idx, 7, str(row['Remarks']), text_format)
-                worksheet.write(3 + row_idx, 8, str(row['Action Required']), text_format)
+                worksheet.write(3 + row_idx, 4, row.get('ITC Books', 0), money_format)
+                worksheet.write(3 + row_idx, 5, row.get('ITC 2B', 0), money_format)
+                worksheet.write(3 + row_idx, 6, row.get('Difference', 0), money_format)
+                worksheet.write(3 + row_idx, 7, str(row.get('Remarks', '')), text_format)
+                worksheet.write(3 + row_idx, 8, str(row.get('Action Required', '')), text_format)
             
             # Set column widths
             worksheet.set_column(0, 0, 18)
@@ -1774,6 +1730,7 @@ def create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, toleranc
             worksheet.set_column(8, 8, 20)
             
             # Freeze pane at A3
+            autofit_worksheet(worksheet)
             worksheet.freeze_panes(3, 0)
 
 
@@ -1812,7 +1769,7 @@ def export_to_excel_old_workbook_exact_match(r, detail_df, month_summary, trade_
             create_supplier_drill_down_exact_match(writer, detail_df, r, trade_name_map)
         
         # 9. Monthly detail sheets (Mar-2026, Apr-2026, etc.)
-        create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, tolerance)
+        create_monthly_detail_sheets_exact_match(writer, r, trade_name_map, tolerance, detail_df)
         
         # 10. NO ITC sheet
         create_no_itc_sheet_exact_match(writer, r)
@@ -1837,7 +1794,6 @@ def export_to_excel_old_workbook_exact_match(r, detail_df, month_summary, trade_
                 'bold': True,
                 'font_color': '#FFFFFF',
                 'bg_color': '#1F4E78',
-                'border': 1,
                 'align': 'center',
                 'valign': 'vcenter',
                 'font_size': 10,
@@ -1845,8 +1801,15 @@ def export_to_excel_old_workbook_exact_match(r, detail_df, month_summary, trade_
             })
             
             text_format = workbook.add_format({
-                'border': 1,
                 'align': 'left',
+                'valign': 'vcenter',
+                'font_size': 10,
+                'font_name': 'Aptos Narrow'
+            })
+
+            issue_date_format = workbook.add_format({
+                'num_format': 'dd-mmm-yyyy',
+                'align': 'center',
                 'valign': 'vcenter',
                 'font_size': 10,
                 'font_name': 'Aptos Narrow'
@@ -1866,16 +1829,26 @@ def export_to_excel_old_workbook_exact_match(r, detail_df, month_summary, trade_
             for row_idx, (_, row) in enumerate(issues_export.iterrows()):
                 for col_idx, header in enumerate(headers):
                     val = row[header]
-                    worksheet.write(3 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
+                    if header == "Invoice_Date" and pd.notna(val):
+                        try:
+                            worksheet.write_datetime(3 + row_idx, col_idx, pd.to_datetime(val).to_pydatetime(), issue_date_format)
+                        except Exception:
+                            worksheet.write(3 + row_idx, col_idx, fmt_date(val), text_format)
+                    else:
+                        worksheet.write(3 + row_idx, col_idx, str(val) if pd.notna(val) else "", text_format)
             
             for col_idx, header in enumerate(headers):
                 max_len = len(header)
                 if not issues_export.empty:
                     for row_idx in range(min(100, len(issues_export))):
-                        val = str(issues_export.iloc[row_idx][header]) if pd.notna(issues_export.iloc[row_idx][header]) else ""
+                        if header == "Invoice_Date":
+                            val = fmt_date(issues_export.iloc[row_idx][header])
+                        else:
+                            val = str(issues_export.iloc[row_idx][header]) if pd.notna(issues_export.iloc[row_idx][header]) else ""
                         max_len = max(max_len, min(len(val), 25))
                 worksheet.set_column(col_idx, col_idx, max_len + 2)
             
+            autofit_worksheet(worksheet)
             worksheet.freeze_panes(3, 0)
     
     output.seek(0)
@@ -1897,29 +1870,7 @@ with col_dl1:
     st.download_button(
         "📥 Download Full Report (Excel)",
         data=excel_data,
-        file_name=f"reconciliation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-
-with col_dl2:
-    def export_issues_simple(r, all_issues):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            if not r.get("missing_2b", pd.DataFrame()).empty:
-                r["missing_2b"].to_excel(writer, sheet_name="Missing in 2B", index=False)
-            if not r.get("missing_books", pd.DataFrame()).empty:
-                r["missing_books"].to_excel(writer, sheet_name="Missing in Books", index=False)
-            if not r.get("tax_diff", pd.DataFrame()).empty:
-                r["tax_diff"].to_excel(writer, sheet_name="Tax Differences", index=False)
-            if not all_issues.empty:
-                all_issues.to_excel(writer, sheet_name="Data Issues", index=False)
-        return output.getvalue()
-    
-    st.download_button(
-        "📥 Download Issues Only (Excel)",
-        data=export_issues_simple(r, all_issues),
-        file_name=f"issues_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        file_name="reconciliation_20260519_180337.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )

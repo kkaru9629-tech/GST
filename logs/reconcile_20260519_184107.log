@@ -1,0 +1,160 @@
+2026-05-19 18:41:31,786 - INFO - Books format detected: tally_pr
+2026-05-19 18:41:31,787 - INFO - Parsing Tally Purchase Register...
+2026-05-19 18:41:31,792 - INFO - Tally column mapping: {'date': 0, 'particulars': 1, 'inv_no': 3, 'gstin': 4, 'gross_total': 9, 'tds_indices': [11, 21], 'tax_indices': {'cgst': [13, 19], 'sgst': [14, 20], 'igst': [29], 'cess': []}}
+2026-05-19 18:41:31,794 - INFO - Invoice debug | Invoice:EGT016/26-27 | Party:Eagle Way Transport | Gross:14850.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:15000.0 | Date_Raw:2026-04-10 00:00:00 | Parsed_Date:2026-04-10 00:00:00
+2026-05-19 18:41:31,850 - INFO - Invoice debug | Invoice:EGT017/26-27 | Party:Eagle Way Transport | Gross:34650.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:35000.0 | Date_Raw:2026-04-14 00:00:00 | Parsed_Date:2026-04-14 00:00:00
+2026-05-19 18:41:31,852 - INFO - Invoice debug | Invoice:007 | Party:Sun Logistics Inc (S C) | Gross:20446.0 | CGST:1572.75 | SGST:1572.75 | IGST:0.0 | CESS:0 | TOTAL_TAX:3145.5 | Invoice_Value:20621.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 18:41:31,853 - INFO - Invoice debug | Invoice:008 | Party:Sun Logistics Inc (S C) | Gross:9114.0 | CGST:701.1 | SGST:701.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:1402.2 | Invoice_Value:9192.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 18:41:31,855 - INFO - Invoice debug | Invoice:011 | Party:Sun Logistics Inc (S C) | Gross:39546.0 | CGST:3042.0 | SGST:3042.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:6084.0 | Invoice_Value:39884.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:41:31,856 - INFO - Invoice debug | Invoice:012 | Party:Sun Logistics Inc (S C) | Gross:22390.66 | CGST:1722.33 | SGST:1722.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:3444.66 | Invoice_Value:22581.66 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:41:31,857 - INFO - Invoice debug | Invoice:019 | Party:Sun Logistics Inc (S C) | Gross:10222.0 | CGST:786.33 | SGST:786.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:1572.66 | Invoice_Value:10310.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:41:31,858 - INFO - Invoice debug | Invoice:020 | Party:Sun Logistics Inc (S C) | Gross:17142.0 | CGST:1318.68 | SGST:1318.68 | IGST:0.0 | CESS:0 | TOTAL_TAX:2637.36 | Invoice_Value:17289.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:41:31,860 - INFO - Invoice debug | Invoice:021 | Party:Sun Logistics Inc (S C) | Gross:51998.0 | CGST:3999.78 | SGST:3999.78 | IGST:0.0 | CESS:0 | TOTAL_TAX:7999.56 | Invoice_Value:52442.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:41:31,861 - INFO - Invoice debug | Invoice:028 | Party:Sun Logistics Inc (S C) | Gross:14550.0 | CGST:1119.24 | SGST:1119.24 | IGST:0.0 | CESS:0 | TOTAL_TAX:2238.48 | Invoice_Value:14674.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:41:31,863 - INFO - Invoice debug | Invoice:030 | Party:Sun Logistics Inc (S C) | Gross:36548.0 | CGST:2811.33 | SGST:2811.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:5622.66 | Invoice_Value:36860.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:41:31,864 - INFO - Invoice debug | Invoice:01 | Party:Sun Logistics Inc (S C) | Gross:29694.0 | CGST:2284.2 | SGST:2284.2 | IGST:0.0 | CESS:0 | TOTAL_TAX:4568.4 | Invoice_Value:29948.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 18:41:31,866 - INFO - Invoice debug | Invoice:002 | Party:Sun Logistics Inc (S C) | Gross:22606.0 | CGST:1738.89 | SGST:1738.89 | IGST:0.0 | CESS:0 | TOTAL_TAX:3477.78 | Invoice_Value:22799.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 18:41:31,867 - INFO - Invoice debug | Invoice:03 | Party:Sun Logistics Inc (S C) | Gross:32514.0 | CGST:2501.1 | SGST:2501.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:5002.2 | Invoice_Value:32792.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 18:41:31,868 - INFO - Invoice debug | Invoice:04 | Party:Sun Logistics Inc (S C) | Gross:29658.0 | CGST:2281.32 | SGST:2281.32 | IGST:0.0 | CESS:0 | TOTAL_TAX:4562.64 | Invoice_Value:29911.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 18:41:31,870 - INFO - Invoice debug | Invoice:BANDN04260000156 | Party:CTL LOGISTICS (INDIA) PRIVATE LIMITED(BLR) | Gross:94336.0 | CGST:6442.64 | SGST:6442.64 | IGST:0.0 | CESS:0 | TOTAL_TAX:12885.28 | Invoice_Value:95998.0 | Date_Raw:2026-04-23 00:00:00 | Parsed_Date:2026-04-23 00:00:00
+2026-05-19 18:41:31,872 - INFO - Invoice debug | Invoice:EGT032/26-27 | Party:Eagle Way Transport | Gross:22770.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:23000.0 | Date_Raw:2026-04-24 00:00:00 | Parsed_Date:2026-04-24 00:00:00
+2026-05-19 18:41:31,874 - INFO - Invoice debug | Invoice:6086 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 18:41:31,875 - INFO - Invoice debug | Invoice:6085 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 18:41:31,876 - INFO - Invoice debug | Invoice:052 | Party:Sun Logistics Inc (S C) | Gross:552498.0 | CGST:42499.8 | SGST:42499.8 | IGST:0.0 | CESS:0 | TOTAL_TAX:84999.6 | Invoice_Value:557220.0 | Date_Raw:2026-04-28 00:00:00 | Parsed_Date:2026-04-28 00:00:00
+2026-05-19 18:41:31,922 - INFO - Valid:27 NoITC:9 Issues:1
+2026-05-19 18:41:31,972 - INFO - GSTR-2B format detected: gstr2b_excel for B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx
+2026-05-19 18:41:31,972 - INFO - Parsing GSTR-2B Excel...
+2026-05-19 18:41:32,059 - INFO - Parsed B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx: 43 rows
+2026-05-19 18:41:32,119 - INFO - Starting reconciliation...
+2026-05-19 18:41:32,301 - INFO - L1: 1 matched
+2026-05-19 18:41:32,388 - INFO - L3: 2 matched
+2026-05-19 18:41:32,641 - INFO - L4 date mismatch: 24 matched
+2026-05-19 18:41:32,663 - INFO - Match 62.79%, Risk 0.00
+2026-05-19 18:58:59,695 - INFO - Books format detected: tally_pr
+2026-05-19 18:58:59,695 - INFO - Parsing Tally Purchase Register...
+2026-05-19 18:58:59,699 - INFO - Tally column mapping: {'date': 0, 'particulars': 1, 'inv_no': 3, 'gstin': 4, 'gross_total': 9, 'tds_indices': [11, 21], 'tax_indices': {'cgst': [13, 19], 'sgst': [14, 20], 'igst': [29], 'cess': []}}
+2026-05-19 18:58:59,700 - INFO - Invoice debug | Invoice:EGT016/26-27 | Party:Eagle Way Transport | Gross:14850.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:15000.0 | Date_Raw:2026-04-10 00:00:00 | Parsed_Date:2026-04-10 00:00:00
+2026-05-19 18:58:59,700 - INFO - Invoice debug | Invoice:EGT017/26-27 | Party:Eagle Way Transport | Gross:34650.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:35000.0 | Date_Raw:2026-04-14 00:00:00 | Parsed_Date:2026-04-14 00:00:00
+2026-05-19 18:58:59,701 - INFO - Invoice debug | Invoice:007 | Party:Sun Logistics Inc (S C) | Gross:20446.0 | CGST:1572.75 | SGST:1572.75 | IGST:0.0 | CESS:0 | TOTAL_TAX:3145.5 | Invoice_Value:20621.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 18:58:59,702 - INFO - Invoice debug | Invoice:008 | Party:Sun Logistics Inc (S C) | Gross:9114.0 | CGST:701.1 | SGST:701.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:1402.2 | Invoice_Value:9192.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 18:58:59,703 - INFO - Invoice debug | Invoice:011 | Party:Sun Logistics Inc (S C) | Gross:39546.0 | CGST:3042.0 | SGST:3042.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:6084.0 | Invoice_Value:39884.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:58:59,703 - INFO - Invoice debug | Invoice:012 | Party:Sun Logistics Inc (S C) | Gross:22390.66 | CGST:1722.33 | SGST:1722.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:3444.66 | Invoice_Value:22581.66 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:58:59,704 - INFO - Invoice debug | Invoice:019 | Party:Sun Logistics Inc (S C) | Gross:10222.0 | CGST:786.33 | SGST:786.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:1572.66 | Invoice_Value:10310.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:58:59,705 - INFO - Invoice debug | Invoice:020 | Party:Sun Logistics Inc (S C) | Gross:17142.0 | CGST:1318.68 | SGST:1318.68 | IGST:0.0 | CESS:0 | TOTAL_TAX:2637.36 | Invoice_Value:17289.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:58:59,707 - INFO - Invoice debug | Invoice:021 | Party:Sun Logistics Inc (S C) | Gross:51998.0 | CGST:3999.78 | SGST:3999.78 | IGST:0.0 | CESS:0 | TOTAL_TAX:7999.56 | Invoice_Value:52442.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:58:59,708 - INFO - Invoice debug | Invoice:028 | Party:Sun Logistics Inc (S C) | Gross:14550.0 | CGST:1119.24 | SGST:1119.24 | IGST:0.0 | CESS:0 | TOTAL_TAX:2238.48 | Invoice_Value:14674.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:58:59,709 - INFO - Invoice debug | Invoice:030 | Party:Sun Logistics Inc (S C) | Gross:36548.0 | CGST:2811.33 | SGST:2811.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:5622.66 | Invoice_Value:36860.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 18:58:59,711 - INFO - Invoice debug | Invoice:01 | Party:Sun Logistics Inc (S C) | Gross:29694.0 | CGST:2284.2 | SGST:2284.2 | IGST:0.0 | CESS:0 | TOTAL_TAX:4568.4 | Invoice_Value:29948.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 18:58:59,713 - INFO - Invoice debug | Invoice:002 | Party:Sun Logistics Inc (S C) | Gross:22606.0 | CGST:1738.89 | SGST:1738.89 | IGST:0.0 | CESS:0 | TOTAL_TAX:3477.78 | Invoice_Value:22799.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 18:58:59,715 - INFO - Invoice debug | Invoice:03 | Party:Sun Logistics Inc (S C) | Gross:32514.0 | CGST:2501.1 | SGST:2501.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:5002.2 | Invoice_Value:32792.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 18:58:59,716 - INFO - Invoice debug | Invoice:04 | Party:Sun Logistics Inc (S C) | Gross:29658.0 | CGST:2281.32 | SGST:2281.32 | IGST:0.0 | CESS:0 | TOTAL_TAX:4562.64 | Invoice_Value:29911.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 18:58:59,717 - INFO - Invoice debug | Invoice:BANDN04260000156 | Party:CTL LOGISTICS (INDIA) PRIVATE LIMITED(BLR) | Gross:94336.0 | CGST:6442.64 | SGST:6442.64 | IGST:0.0 | CESS:0 | TOTAL_TAX:12885.28 | Invoice_Value:95998.0 | Date_Raw:2026-04-23 00:00:00 | Parsed_Date:2026-04-23 00:00:00
+2026-05-19 18:58:59,719 - INFO - Invoice debug | Invoice:EGT032/26-27 | Party:Eagle Way Transport | Gross:22770.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:23000.0 | Date_Raw:2026-04-24 00:00:00 | Parsed_Date:2026-04-24 00:00:00
+2026-05-19 18:58:59,720 - INFO - Invoice debug | Invoice:6086 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 18:58:59,721 - INFO - Invoice debug | Invoice:6085 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 18:58:59,723 - INFO - Invoice debug | Invoice:052 | Party:Sun Logistics Inc (S C) | Gross:552498.0 | CGST:42499.8 | SGST:42499.8 | IGST:0.0 | CESS:0 | TOTAL_TAX:84999.6 | Invoice_Value:557220.0 | Date_Raw:2026-04-28 00:00:00 | Parsed_Date:2026-04-28 00:00:00
+2026-05-19 18:58:59,760 - INFO - Valid:27 NoITC:9 Issues:1
+2026-05-19 18:58:59,812 - INFO - GSTR-2B format detected: gstr2b_excel for B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx
+2026-05-19 18:58:59,812 - INFO - Parsing GSTR-2B Excel...
+2026-05-19 18:58:59,886 - INFO - Parsed B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx: 43 rows
+2026-05-19 18:58:59,935 - INFO - Starting reconciliation...
+2026-05-19 18:59:00,119 - INFO - L1: 1 matched
+2026-05-19 18:59:00,214 - INFO - L3: 2 matched
+2026-05-19 18:59:00,498 - INFO - L4 date mismatch: 24 matched
+2026-05-19 18:59:00,520 - INFO - Match 62.79%, Risk 0.00
+2026-05-19 19:00:44,037 - INFO - Books format detected: tally_pr
+2026-05-19 19:00:44,037 - INFO - Parsing Tally Purchase Register...
+2026-05-19 19:00:44,040 - INFO - Tally column mapping: {'date': 0, 'particulars': 1, 'inv_no': 3, 'gstin': 4, 'gross_total': 9, 'tds_indices': [11, 21], 'tax_indices': {'cgst': [13, 19], 'sgst': [14, 20], 'igst': [29], 'cess': []}}
+2026-05-19 19:00:44,041 - INFO - Invoice debug | Invoice:EGT016/26-27 | Party:Eagle Way Transport | Gross:14850.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:15000.0 | Date_Raw:2026-04-10 00:00:00 | Parsed_Date:2026-04-10 00:00:00
+2026-05-19 19:00:44,042 - INFO - Invoice debug | Invoice:EGT017/26-27 | Party:Eagle Way Transport | Gross:34650.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:35000.0 | Date_Raw:2026-04-14 00:00:00 | Parsed_Date:2026-04-14 00:00:00
+2026-05-19 19:00:44,042 - INFO - Invoice debug | Invoice:007 | Party:Sun Logistics Inc (S C) | Gross:20446.0 | CGST:1572.75 | SGST:1572.75 | IGST:0.0 | CESS:0 | TOTAL_TAX:3145.5 | Invoice_Value:20621.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 19:00:44,044 - INFO - Invoice debug | Invoice:008 | Party:Sun Logistics Inc (S C) | Gross:9114.0 | CGST:701.1 | SGST:701.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:1402.2 | Invoice_Value:9192.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 19:00:44,045 - INFO - Invoice debug | Invoice:011 | Party:Sun Logistics Inc (S C) | Gross:39546.0 | CGST:3042.0 | SGST:3042.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:6084.0 | Invoice_Value:39884.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:00:44,046 - INFO - Invoice debug | Invoice:012 | Party:Sun Logistics Inc (S C) | Gross:22390.66 | CGST:1722.33 | SGST:1722.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:3444.66 | Invoice_Value:22581.66 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:00:44,047 - INFO - Invoice debug | Invoice:019 | Party:Sun Logistics Inc (S C) | Gross:10222.0 | CGST:786.33 | SGST:786.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:1572.66 | Invoice_Value:10310.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:00:44,049 - INFO - Invoice debug | Invoice:020 | Party:Sun Logistics Inc (S C) | Gross:17142.0 | CGST:1318.68 | SGST:1318.68 | IGST:0.0 | CESS:0 | TOTAL_TAX:2637.36 | Invoice_Value:17289.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:00:44,050 - INFO - Invoice debug | Invoice:021 | Party:Sun Logistics Inc (S C) | Gross:51998.0 | CGST:3999.78 | SGST:3999.78 | IGST:0.0 | CESS:0 | TOTAL_TAX:7999.56 | Invoice_Value:52442.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:00:44,051 - INFO - Invoice debug | Invoice:028 | Party:Sun Logistics Inc (S C) | Gross:14550.0 | CGST:1119.24 | SGST:1119.24 | IGST:0.0 | CESS:0 | TOTAL_TAX:2238.48 | Invoice_Value:14674.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:00:44,052 - INFO - Invoice debug | Invoice:030 | Party:Sun Logistics Inc (S C) | Gross:36548.0 | CGST:2811.33 | SGST:2811.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:5622.66 | Invoice_Value:36860.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:00:44,053 - INFO - Invoice debug | Invoice:01 | Party:Sun Logistics Inc (S C) | Gross:29694.0 | CGST:2284.2 | SGST:2284.2 | IGST:0.0 | CESS:0 | TOTAL_TAX:4568.4 | Invoice_Value:29948.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:00:44,053 - INFO - Invoice debug | Invoice:002 | Party:Sun Logistics Inc (S C) | Gross:22606.0 | CGST:1738.89 | SGST:1738.89 | IGST:0.0 | CESS:0 | TOTAL_TAX:3477.78 | Invoice_Value:22799.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:00:44,054 - INFO - Invoice debug | Invoice:03 | Party:Sun Logistics Inc (S C) | Gross:32514.0 | CGST:2501.1 | SGST:2501.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:5002.2 | Invoice_Value:32792.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:00:44,055 - INFO - Invoice debug | Invoice:04 | Party:Sun Logistics Inc (S C) | Gross:29658.0 | CGST:2281.32 | SGST:2281.32 | IGST:0.0 | CESS:0 | TOTAL_TAX:4562.64 | Invoice_Value:29911.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:00:44,055 - INFO - Invoice debug | Invoice:BANDN04260000156 | Party:CTL LOGISTICS (INDIA) PRIVATE LIMITED(BLR) | Gross:94336.0 | CGST:6442.64 | SGST:6442.64 | IGST:0.0 | CESS:0 | TOTAL_TAX:12885.28 | Invoice_Value:95998.0 | Date_Raw:2026-04-23 00:00:00 | Parsed_Date:2026-04-23 00:00:00
+2026-05-19 19:00:44,056 - INFO - Invoice debug | Invoice:EGT032/26-27 | Party:Eagle Way Transport | Gross:22770.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:23000.0 | Date_Raw:2026-04-24 00:00:00 | Parsed_Date:2026-04-24 00:00:00
+2026-05-19 19:00:44,057 - INFO - Invoice debug | Invoice:6086 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 19:00:44,059 - INFO - Invoice debug | Invoice:6085 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 19:00:44,060 - INFO - Invoice debug | Invoice:052 | Party:Sun Logistics Inc (S C) | Gross:552498.0 | CGST:42499.8 | SGST:42499.8 | IGST:0.0 | CESS:0 | TOTAL_TAX:84999.6 | Invoice_Value:557220.0 | Date_Raw:2026-04-28 00:00:00 | Parsed_Date:2026-04-28 00:00:00
+2026-05-19 19:00:44,094 - INFO - Valid:27 NoITC:9 Issues:1
+2026-05-19 19:00:44,155 - INFO - GSTR-2B format detected: gstr2b_excel for B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx
+2026-05-19 19:00:44,155 - INFO - Parsing GSTR-2B Excel...
+2026-05-19 19:00:44,227 - INFO - Parsed B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx: 43 rows
+2026-05-19 19:00:44,276 - INFO - Starting reconciliation...
+2026-05-19 19:00:44,431 - INFO - L1: 1 matched
+2026-05-19 19:00:44,518 - INFO - L3: 2 matched
+2026-05-19 19:00:44,752 - INFO - L4 date mismatch: 24 matched
+2026-05-19 19:00:44,772 - INFO - Match 62.79%, Risk 0.00
+2026-05-19 19:07:17,653 - INFO - Books format detected: tally_pr
+2026-05-19 19:07:17,654 - INFO - Parsing Tally Purchase Register...
+2026-05-19 19:07:17,659 - INFO - Tally column mapping: {'date': 0, 'particulars': 1, 'inv_no': 3, 'gstin': 4, 'gross_total': 9, 'tds_indices': [11, 21], 'tax_indices': {'cgst': [13, 19], 'sgst': [14, 20], 'igst': [29], 'cess': []}}
+2026-05-19 19:07:17,660 - INFO - Invoice debug | Invoice:EGT016/26-27 | Party:Eagle Way Transport | Gross:14850.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:15000.0 | Date_Raw:2026-04-10 00:00:00 | Parsed_Date:2026-04-10 00:00:00
+2026-05-19 19:07:17,661 - INFO - Invoice debug | Invoice:EGT017/26-27 | Party:Eagle Way Transport | Gross:34650.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:35000.0 | Date_Raw:2026-04-14 00:00:00 | Parsed_Date:2026-04-14 00:00:00
+2026-05-19 19:07:17,662 - INFO - Invoice debug | Invoice:007 | Party:Sun Logistics Inc (S C) | Gross:20446.0 | CGST:1572.75 | SGST:1572.75 | IGST:0.0 | CESS:0 | TOTAL_TAX:3145.5 | Invoice_Value:20621.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 19:07:17,663 - INFO - Invoice debug | Invoice:008 | Party:Sun Logistics Inc (S C) | Gross:9114.0 | CGST:701.1 | SGST:701.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:1402.2 | Invoice_Value:9192.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 19:07:17,664 - INFO - Invoice debug | Invoice:011 | Party:Sun Logistics Inc (S C) | Gross:39546.0 | CGST:3042.0 | SGST:3042.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:6084.0 | Invoice_Value:39884.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:07:17,665 - INFO - Invoice debug | Invoice:012 | Party:Sun Logistics Inc (S C) | Gross:22390.66 | CGST:1722.33 | SGST:1722.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:3444.66 | Invoice_Value:22581.66 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:07:17,666 - INFO - Invoice debug | Invoice:019 | Party:Sun Logistics Inc (S C) | Gross:10222.0 | CGST:786.33 | SGST:786.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:1572.66 | Invoice_Value:10310.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:07:17,667 - INFO - Invoice debug | Invoice:020 | Party:Sun Logistics Inc (S C) | Gross:17142.0 | CGST:1318.68 | SGST:1318.68 | IGST:0.0 | CESS:0 | TOTAL_TAX:2637.36 | Invoice_Value:17289.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:07:17,668 - INFO - Invoice debug | Invoice:021 | Party:Sun Logistics Inc (S C) | Gross:51998.0 | CGST:3999.78 | SGST:3999.78 | IGST:0.0 | CESS:0 | TOTAL_TAX:7999.56 | Invoice_Value:52442.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:07:17,669 - INFO - Invoice debug | Invoice:028 | Party:Sun Logistics Inc (S C) | Gross:14550.0 | CGST:1119.24 | SGST:1119.24 | IGST:0.0 | CESS:0 | TOTAL_TAX:2238.48 | Invoice_Value:14674.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:07:17,670 - INFO - Invoice debug | Invoice:030 | Party:Sun Logistics Inc (S C) | Gross:36548.0 | CGST:2811.33 | SGST:2811.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:5622.66 | Invoice_Value:36860.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:07:17,671 - INFO - Invoice debug | Invoice:01 | Party:Sun Logistics Inc (S C) | Gross:29694.0 | CGST:2284.2 | SGST:2284.2 | IGST:0.0 | CESS:0 | TOTAL_TAX:4568.4 | Invoice_Value:29948.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:07:17,672 - INFO - Invoice debug | Invoice:002 | Party:Sun Logistics Inc (S C) | Gross:22606.0 | CGST:1738.89 | SGST:1738.89 | IGST:0.0 | CESS:0 | TOTAL_TAX:3477.78 | Invoice_Value:22799.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:07:17,674 - INFO - Invoice debug | Invoice:03 | Party:Sun Logistics Inc (S C) | Gross:32514.0 | CGST:2501.1 | SGST:2501.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:5002.2 | Invoice_Value:32792.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:07:17,675 - INFO - Invoice debug | Invoice:04 | Party:Sun Logistics Inc (S C) | Gross:29658.0 | CGST:2281.32 | SGST:2281.32 | IGST:0.0 | CESS:0 | TOTAL_TAX:4562.64 | Invoice_Value:29911.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:07:17,675 - INFO - Invoice debug | Invoice:BANDN04260000156 | Party:CTL LOGISTICS (INDIA) PRIVATE LIMITED(BLR) | Gross:94336.0 | CGST:6442.64 | SGST:6442.64 | IGST:0.0 | CESS:0 | TOTAL_TAX:12885.28 | Invoice_Value:95998.0 | Date_Raw:2026-04-23 00:00:00 | Parsed_Date:2026-04-23 00:00:00
+2026-05-19 19:07:17,676 - INFO - Invoice debug | Invoice:EGT032/26-27 | Party:Eagle Way Transport | Gross:22770.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:23000.0 | Date_Raw:2026-04-24 00:00:00 | Parsed_Date:2026-04-24 00:00:00
+2026-05-19 19:07:17,677 - INFO - Invoice debug | Invoice:6086 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 19:07:17,678 - INFO - Invoice debug | Invoice:6085 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 19:07:17,680 - INFO - Invoice debug | Invoice:052 | Party:Sun Logistics Inc (S C) | Gross:552498.0 | CGST:42499.8 | SGST:42499.8 | IGST:0.0 | CESS:0 | TOTAL_TAX:84999.6 | Invoice_Value:557220.0 | Date_Raw:2026-04-28 00:00:00 | Parsed_Date:2026-04-28 00:00:00
+2026-05-19 19:07:17,715 - INFO - Valid:27 NoITC:9 Issues:1
+2026-05-19 19:07:17,762 - INFO - GSTR-2B format detected: gstr2b_excel for B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx
+2026-05-19 19:07:17,763 - INFO - Parsing GSTR-2B Excel...
+2026-05-19 19:07:17,837 - INFO - Parsed B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx: 43 rows
+2026-05-19 19:07:17,885 - INFO - Starting reconciliation...
+2026-05-19 19:07:18,047 - INFO - L1: 1 matched
+2026-05-19 19:07:18,130 - INFO - L3: 2 matched
+2026-05-19 19:07:18,393 - INFO - L4 date mismatch: 24 matched
+2026-05-19 19:07:18,412 - INFO - Match 62.79%, Risk 0.00
+2026-05-19 19:22:07,035 - INFO - Books format detected: tally_pr
+2026-05-19 19:22:07,036 - INFO - Parsing Tally Purchase Register...
+2026-05-19 19:22:07,039 - INFO - Tally column mapping: {'date': 0, 'particulars': 1, 'inv_no': 3, 'gstin': 4, 'gross_total': 9, 'tds_indices': [11, 21], 'tax_indices': {'cgst': [13, 19], 'sgst': [14, 20], 'igst': [29], 'cess': []}}
+2026-05-19 19:22:07,040 - INFO - Invoice debug | Invoice:EGT016/26-27 | Party:Eagle Way Transport | Gross:14850.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:15000.0 | Date_Raw:2026-04-10 00:00:00 | Parsed_Date:2026-04-10 00:00:00
+2026-05-19 19:22:07,042 - INFO - Invoice debug | Invoice:EGT017/26-27 | Party:Eagle Way Transport | Gross:34650.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:35000.0 | Date_Raw:2026-04-14 00:00:00 | Parsed_Date:2026-04-14 00:00:00
+2026-05-19 19:22:07,044 - INFO - Invoice debug | Invoice:007 | Party:Sun Logistics Inc (S C) | Gross:20446.0 | CGST:1572.75 | SGST:1572.75 | IGST:0.0 | CESS:0 | TOTAL_TAX:3145.5 | Invoice_Value:20621.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 19:22:07,045 - INFO - Invoice debug | Invoice:008 | Party:Sun Logistics Inc (S C) | Gross:9114.0 | CGST:701.1 | SGST:701.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:1402.2 | Invoice_Value:9192.0 | Date_Raw:2026-04-20 00:00:00 | Parsed_Date:2026-04-20 00:00:00
+2026-05-19 19:22:07,046 - INFO - Invoice debug | Invoice:011 | Party:Sun Logistics Inc (S C) | Gross:39546.0 | CGST:3042.0 | SGST:3042.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:6084.0 | Invoice_Value:39884.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:22:07,047 - INFO - Invoice debug | Invoice:012 | Party:Sun Logistics Inc (S C) | Gross:22390.66 | CGST:1722.33 | SGST:1722.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:3444.66 | Invoice_Value:22581.66 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:22:07,048 - INFO - Invoice debug | Invoice:019 | Party:Sun Logistics Inc (S C) | Gross:10222.0 | CGST:786.33 | SGST:786.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:1572.66 | Invoice_Value:10310.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:22:07,050 - INFO - Invoice debug | Invoice:020 | Party:Sun Logistics Inc (S C) | Gross:17142.0 | CGST:1318.68 | SGST:1318.68 | IGST:0.0 | CESS:0 | TOTAL_TAX:2637.36 | Invoice_Value:17289.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:22:07,050 - INFO - Invoice debug | Invoice:021 | Party:Sun Logistics Inc (S C) | Gross:51998.0 | CGST:3999.78 | SGST:3999.78 | IGST:0.0 | CESS:0 | TOTAL_TAX:7999.56 | Invoice_Value:52442.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:22:07,051 - INFO - Invoice debug | Invoice:028 | Party:Sun Logistics Inc (S C) | Gross:14550.0 | CGST:1119.24 | SGST:1119.24 | IGST:0.0 | CESS:0 | TOTAL_TAX:2238.48 | Invoice_Value:14674.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:22:07,052 - INFO - Invoice debug | Invoice:030 | Party:Sun Logistics Inc (S C) | Gross:36548.0 | CGST:2811.33 | SGST:2811.33 | IGST:0.0 | CESS:0 | TOTAL_TAX:5622.66 | Invoice_Value:36860.0 | Date_Raw:2026-04-21 00:00:00 | Parsed_Date:2026-04-21 00:00:00
+2026-05-19 19:22:07,053 - INFO - Invoice debug | Invoice:01 | Party:Sun Logistics Inc (S C) | Gross:29694.0 | CGST:2284.2 | SGST:2284.2 | IGST:0.0 | CESS:0 | TOTAL_TAX:4568.4 | Invoice_Value:29948.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:22:07,054 - INFO - Invoice debug | Invoice:002 | Party:Sun Logistics Inc (S C) | Gross:22606.0 | CGST:1738.89 | SGST:1738.89 | IGST:0.0 | CESS:0 | TOTAL_TAX:3477.78 | Invoice_Value:22799.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:22:07,055 - INFO - Invoice debug | Invoice:03 | Party:Sun Logistics Inc (S C) | Gross:32514.0 | CGST:2501.1 | SGST:2501.1 | IGST:0.0 | CESS:0 | TOTAL_TAX:5002.2 | Invoice_Value:32792.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:22:07,057 - INFO - Invoice debug | Invoice:04 | Party:Sun Logistics Inc (S C) | Gross:29658.0 | CGST:2281.32 | SGST:2281.32 | IGST:0.0 | CESS:0 | TOTAL_TAX:4562.64 | Invoice_Value:29911.0 | Date_Raw:2026-04-22 00:00:00 | Parsed_Date:2026-04-22 00:00:00
+2026-05-19 19:22:07,058 - INFO - Invoice debug | Invoice:BANDN04260000156 | Party:CTL LOGISTICS (INDIA) PRIVATE LIMITED(BLR) | Gross:94336.0 | CGST:6442.64 | SGST:6442.64 | IGST:0.0 | CESS:0 | TOTAL_TAX:12885.28 | Invoice_Value:95998.0 | Date_Raw:2026-04-23 00:00:00 | Parsed_Date:2026-04-23 00:00:00
+2026-05-19 19:22:07,060 - INFO - Invoice debug | Invoice:EGT032/26-27 | Party:Eagle Way Transport | Gross:22770.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:23000.0 | Date_Raw:2026-04-24 00:00:00 | Parsed_Date:2026-04-24 00:00:00
+2026-05-19 19:22:07,061 - INFO - Invoice debug | Invoice:6086 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 19:22:07,063 - INFO - Invoice debug | Invoice:6085 | Party:Sri Eshwara Logistics | Gross:84249.0 | CGST:0.0 | SGST:0.0 | IGST:0.0 | CESS:0 | TOTAL_TAX:0.0 | Invoice_Value:85100.0 | Date_Raw:2026-04-27 00:00:00 | Parsed_Date:2026-04-27 00:00:00
+2026-05-19 19:22:07,064 - INFO - Invoice debug | Invoice:052 | Party:Sun Logistics Inc (S C) | Gross:552498.0 | CGST:42499.8 | SGST:42499.8 | IGST:0.0 | CESS:0 | TOTAL_TAX:84999.6 | Invoice_Value:557220.0 | Date_Raw:2026-04-28 00:00:00 | Parsed_Date:2026-04-28 00:00:00
+2026-05-19 19:22:07,098 - INFO - Valid:27 NoITC:9 Issues:1
+2026-05-19 19:22:07,144 - INFO - GSTR-2B format detected: gstr2b_excel for B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx
+2026-05-19 19:22:07,144 - INFO - Parsing GSTR-2B Excel...
+2026-05-19 19:22:07,217 - INFO - Parsed B2B_042026_29AALCD6246M1ZZ_GSTR2B_18052026 (1).xlsx: 43 rows
+2026-05-19 19:22:07,263 - INFO - Starting reconciliation...
+2026-05-19 19:22:07,420 - INFO - L1: 1 matched
+2026-05-19 19:22:07,503 - INFO - L3: 2 matched
+2026-05-19 19:22:07,759 - INFO - L4 date mismatch: 24 matched
+2026-05-19 19:22:07,778 - INFO - Match 62.79%, Risk 0.00
